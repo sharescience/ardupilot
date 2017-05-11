@@ -1,9 +1,9 @@
 [submodule "modules/PX4Firmware"]
 	path = modules/PX4Firmware
-	url = git://github.com/ArduPilot/PX4Firmware.git
+	url = git://github.com/sharescience/PX4Firmware.git
 [submodule "modules/PX4NuttX"]
 	path = modules/PX4NuttX
-	url = git://github.com/ArduPilot/PX4NuttX.git
+	url = git://github.com/sharescience/PX4NuttX.git
 [submodule "modules/uavcan"]
 	path = modules/uavcan
 	url = git://github.com/ArduPilot/uavcan.git
@@ -15,7 +15,7 @@
 	url = git://github.com/google/benchmark.git
 [submodule "modules/mavlink"]
 	path = modules/mavlink
-	url = git://github.com/ArduPilot/mavlink
+	url = git://github.com/sharescience/mavlink
 [submodule "gtest"]
 	path = modules/gtest
 	url = git://github.com/ArduPilot/googletest
