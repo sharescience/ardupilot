@@ -1,4 +1,3 @@
-// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -445,25 +444,25 @@ void AP_MotorsHeli_Dual::move_actuators(float roll_out, float pitch_out, float c
     limit.throttle_upper = false;
 
     if (_dual_mode == AP_MOTORS_HELI_DUAL_MODE_TRANSVERSE) {
-      if (pitch_out < -_cyclic_max/4500.0f) {
-          pitch_out = -_cyclic_max/4500.0f;
-          limit.roll_pitch = true;
-      }
+        if (pitch_out < -_cyclic_max/4500.0f) {
+            pitch_out = -_cyclic_max/4500.0f;
+            limit.roll_pitch = true;
+        }
 
-      if (pitch_out > _cyclic_max/4500.0f) {
-          pitch_out = _cyclic_max/4500.0f;
-          limit.roll_pitch = true;
-      }
+        if (pitch_out > _cyclic_max/4500.0f) {
+            pitch_out = _cyclic_max/4500.0f;
+            limit.roll_pitch = true;
+        }
     } else {
-      if (roll_out < -_cyclic_max/4500.0f) {
-        roll_out = -_cyclic_max/4500.0f;
-        limit.roll_pitch = true;
-      }
+        if (roll_out < -_cyclic_max/4500.0f) {
+            roll_out = -_cyclic_max/4500.0f;
+            limit.roll_pitch = true;
+        }
 
-      if (roll_out > _cyclic_max/4500.0f) {
-        roll_out = _cyclic_max/4500.0f;
-        limit.roll_pitch = true;
-      }
+        if (roll_out > _cyclic_max/4500.0f) {
+            roll_out = _cyclic_max/4500.0f;
+            limit.roll_pitch = true;
+        }
     }
 
 
