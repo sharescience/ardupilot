@@ -20,6 +20,7 @@
 #include <AP_Notify/AP_Notify.h>
 #include <GCS_MAVLink/GCS.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
+#include <climits>
 
 #include "AP_GPS_NOVA.h"
 #include "AP_GPS_ERB.h"
@@ -258,6 +259,9 @@ const AP_Param::GroupInfo AP_GPS::var_info[] = {
 // constructor
 AP_GPS::AP_GPS()
 {
+    static_assert((sizeof(_initialisation_blob) * (CHAR_BIT + 2)) < (4800 * GPS_BAUD_TIME_MS * 1e-3),
+                    "GPS initilisation blob is to large to be completely sent before the baud rate changes");
+
     AP_Param::setup_object_defaults(this, var_info);
 }
 
@@ -396,7 +400,7 @@ void AP_GPS::detect_instance(uint8_t instance)
     switch (_type[instance]) {
 #if CONFIG_HAL_BOARD == HAL_BOARD_QURT
     case GPS_TYPE_QURT:
-        dstate->detect_started_ms = 0; // specified, not detected
+        dstate->auto_detected_baud = false; // specified, not detected
         new_gps = new AP_GPS_QURT(*this, state[instance], _port[instance]);
         goto found_gps;
         break;
@@ -405,7 +409,7 @@ void AP_GPS::detect_instance(uint8_t instance)
     // user has to explicitly set the MAV type, do not use AUTO
     // do not try to detect the MAV type, assume it's there
     case GPS_TYPE_MAV:
-        dstate->detect_started_ms = 0; // specified, not detected
+        dstate->auto_detected_baud = false; // specified, not detected
         new_gps = new AP_GPS_MAV(*this, state[instance], nullptr);
         goto found_gps;
         break;
@@ -414,7 +418,7 @@ void AP_GPS::detect_instance(uint8_t instance)
     // user has to explicitly set the UAVCAN type, do not use AUTO
     // do not try to detect the UAVCAN type, assume it's there
     case GPS_TYPE_UAVCAN:
-        dstate->detect_started_ms = 0; // specified, not detected
+        dstate->auto_detected_baud = false; // specified, not detected
         if (AP_BoardConfig::get_can_enable() >= 1) {
             new_gps = new AP_GPS_UAVCAN(*this, state[instance], nullptr);
 
@@ -446,7 +450,12 @@ void AP_GPS::detect_instance(uint8_t instance)
 
     state[instance].instance = instance;
     state[instance].status = NO_GPS;
-    state[instance].hdop = 9999;
+    state[instance].hdop = GPS_UNKNOWN_DOP;
+    state[instance].vdop = GPS_UNKNOWN_DOP;
+
+    // all remaining drivers automatically cycle through baud rates to detect
+    // the correct baud rate, and should have the selected baud broadcast
+    dstate->auto_detected_baud = true;
 
     switch (_type[instance]) {
     // by default the sbf/trimble gps outputs no data on its port, until configured.
@@ -464,12 +473,6 @@ void AP_GPS::detect_instance(uint8_t instance)
 
     default:
         break;
-    }
-
-    // record the time when we started detection. This is used to try
-    // to avoid initialising a uBlox as a NMEA GPS
-    if (dstate->detect_started_ms == 0) {
-        dstate->detect_started_ms = now;
     }
 
     if (now - dstate->last_baud_change_ms > GPS_BAUD_TIME_MS) {
@@ -538,13 +541,9 @@ void AP_GPS::detect_instance(uint8_t instance)
         else if ((_type[instance] == GPS_TYPE_AUTO || _type[instance] == GPS_TYPE_ERB) &&
                  AP_GPS_ERB::_detect(dstate->erb_detect_state, data)) {
             new_gps = new AP_GPS_ERB(*this, state[instance], _port[instance]);
-        } else if (now - dstate->detect_started_ms > (ARRAY_SIZE(_baudrates) * GPS_BAUD_TIME_MS)) {
-            // prevent false detection of NMEA mode in
-            // a MTK or UBLOX which has booted in NMEA mode
-            if ((_type[instance] == GPS_TYPE_AUTO || _type[instance] == GPS_TYPE_NMEA) &&
-                AP_GPS_NMEA::_detect(dstate->nmea_detect_state, data)) {
-                new_gps = new AP_GPS_NMEA(*this, state[instance], _port[instance]);
-            }
+        } else if (_type[instance] == GPS_TYPE_NMEA &&
+                   AP_GPS_NMEA::_detect(dstate->nmea_detect_state, data)) {
+            new_gps = new AP_GPS_NMEA(*this, state[instance], _port[instance]);
         }
     }
 
@@ -577,7 +576,8 @@ void AP_GPS::update_instance(uint8_t instance)
     if (_type[instance] == GPS_TYPE_NONE) {
         // not enabled
         state[instance].status = NO_GPS;
-        state[instance].hdop = 9999;
+        state[instance].hdop = GPS_UNKNOWN_DOP;
+        state[instance].vdop = GPS_UNKNOWN_DOP;
         return;
     }
     if (locked_ports & (1U<<instance)) {
@@ -612,7 +612,8 @@ void AP_GPS::update_instance(uint8_t instance)
             memset(&state[instance], 0, sizeof(state[instance]));
             state[instance].instance = instance;
             state[instance].status = NO_GPS;
-            state[instance].hdop = 9999;
+            state[instance].hdop = GPS_UNKNOWN_DOP;
+            state[instance].vdop = GPS_UNKNOWN_DOP;
             timing[instance].last_message_time_ms = tnow;
         }
     } else {
@@ -1252,8 +1253,8 @@ void AP_GPS::calc_blended_state(void)
     state[GPS_BLENDED_INSTANCE].time_week = 0;
     state[GPS_BLENDED_INSTANCE].ground_speed = 0.0f;
     state[GPS_BLENDED_INSTANCE].ground_course = 0.0f;
-    state[GPS_BLENDED_INSTANCE].hdop = 9999;
-    state[GPS_BLENDED_INSTANCE].vdop = 9999;
+    state[GPS_BLENDED_INSTANCE].hdop = GPS_UNKNOWN_DOP;
+    state[GPS_BLENDED_INSTANCE].vdop = GPS_UNKNOWN_DOP;
     state[GPS_BLENDED_INSTANCE].num_sats = 0;
     state[GPS_BLENDED_INSTANCE].velocity.zero();
     state[GPS_BLENDED_INSTANCE].speed_accuracy = 1e6f;
