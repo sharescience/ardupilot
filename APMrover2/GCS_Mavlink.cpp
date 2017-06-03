@@ -487,6 +487,7 @@ bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
     case MSG_GIMBAL_REPORT:
     case MSG_RPM:
     case MSG_POSITION_TARGET_GLOBAL_INT:
+    case MSG_LANDING:
         break;  // just here to prevent a warning
     }
     return true;
@@ -858,7 +859,12 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
             }
             result = MAV_RESULT_ACCEPTED;
             break;
-#endif  // CAMERA == ENABLED
+
+        case MAV_CMD_DO_SET_CAM_TRIGG_DIST:
+            rover.camera.set_trigger_distance(packet.param1);
+            result = MAV_RESULT_ACCEPTED;
+            break;
+#endif // CAMERA == ENABLED
 
             case MAV_CMD_DO_MOUNT_CONTROL:
 #if MOUNT == ENABLED
