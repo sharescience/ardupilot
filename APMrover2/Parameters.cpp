@@ -34,6 +34,7 @@ const AP_Param::Info Rover::var_info[] = {
     // @Param: SYS_NUM_RESETS
     // @DisplayName: Num Resets
     // @Description: Number of APM board resets
+    // @ReadOnly: True
     // @User: Advanced
     GSCALAR(num_resets,             "SYS_NUM_RESETS",   0),
 
@@ -124,7 +125,7 @@ const AP_Param::Info Rover::var_info[] = {
 
     // @Param: SPEED_TURN_GAIN
     // @DisplayName: Target speed reduction while turning
-    // @Description: The percentage to reduce the throttle while turning. If this is 100% then the target speed is not reduced while turning. If this is 50% then the target speed is reduced in proportion to the turn rate, with a reduction of 50% when the steering is maximally deflected.
+    // @Description: The percentage to reduce the throttle to while turning. If this is 100% then the target speed is not reduced while turning. If this is 50% then the target speed is reduced in proportion to the turn rate, with a reduction of 50% when the steering is maximally deflected.
     // @Units: %
     // @Range: 0 100
     // @Increment: 1

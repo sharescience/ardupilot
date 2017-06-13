@@ -88,12 +88,7 @@ void Tracker::Log_Write_Vehicle_Startup_Messages()
 void Tracker::start_logging()
 {
     if (g.log_bitmask != 0) {
-        if (!logging_started) {
-            logging_started = true;
-            DataFlash.StartNewLog();
-        }
-        // enable writes
-        DataFlash.EnableWrites(true);
+        DataFlash.StartUnstartedLogging();
     }
 }
 
