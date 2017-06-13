@@ -143,15 +143,22 @@ const AP_Param::GroupInfo AP_BattMonitor::var_info[] = {
 
 #endif // AP_BATT_MONITOR_MAX_INSTANCES > 1
 
-    // @Param: _VOLT_TIMER
+    // @Param: _LOW_TIMER
     // @DisplayName: Low voltage timeout
     // @Description: This is the timeout in seconds before a low voltage event will be triggered. For aircraft with low C batteries it may be necessary to raise this in order to cope with low voltage on long takeoffs. A value of zero disables low voltage errors.
     // @Units: s
     // @Increment: 1
     // @Range: 0 120
     // @User: Advanced
-    AP_GROUPINFO("_VOLT_TIMER", 21, AP_BattMonitor, _volt_timeout, AP_BATT_LOW_VOLT_TIMEOUT_DEFAULT),
-        
+    AP_GROUPINFO("_LOW_TIMER", 21, AP_BattMonitor, _low_voltage_timeout, AP_BATT_LOW_VOLT_TIMEOUT_DEFAULT),
+
+    // @Param: _LOW_TYPE
+    // @DisplayName: Low voltage type
+    // @Description: Voltage type used for detection of low voltage event
+    // @Values: 0:Raw Voltage, 1:Sag Compensated Voltage
+    // @User: Advanced
+    AP_GROUPINFO("_LOW_TYPE", 22, AP_BattMonitor, _low_voltage_source, BattMonitor_LowVoltageSource_Raw),
+
     AP_GROUPEND
 };
 
@@ -227,6 +234,7 @@ AP_BattMonitor::read()
     for (uint8_t i=0; i<_num_instances; i++) {
         if (drivers[i] != nullptr && _monitoring[i] != BattMonitor_TYPE_NONE) {
             drivers[i]->read();
+            drivers[i]->update_resistance_estimate();
         }
     }
 }
@@ -243,12 +251,8 @@ bool AP_BattMonitor::is_powering_off(uint8_t instance) const {
 /// has_current - returns true if battery monitor instance provides current info
 bool AP_BattMonitor::has_current(uint8_t instance) const
 {
-    // check for analog voltage and current monitor or smbus monitor
-    if (instance < _num_instances && drivers[instance] != nullptr) {
-        return (_monitoring[instance] == BattMonitor_TYPE_ANALOG_VOLTAGE_AND_CURRENT ||
-                _monitoring[instance] == BattMonitor_TYPE_SOLO ||
-                _monitoring[instance] == BattMonitor_TYPE_BEBOP ||
-                _monitoring[instance] == BattMonitor_TYPE_MAXELL);
+    if (instance < _num_instances && drivers[instance] != nullptr && _monitoring[instance] != BattMonitor_TYPE_NONE) {
+        return drivers[instance]->has_current();
     }
 
     // not monitoring current
@@ -260,6 +264,18 @@ float AP_BattMonitor::voltage(uint8_t instance) const
 {
     if (instance < _num_instances) {
         return _BattMonitor_STATE(instance).voltage;
+    } else {
+        return 0.0f;
+    }
+}
+
+/// get voltage with sag removed (based on battery current draw and resistance)
+/// this will always be greater than or equal to the raw voltage
+float AP_BattMonitor::voltage_resting_estimate(uint8_t instance) const
+{
+    if (instance < _num_instances) {
+        // resting voltage should always be greater than or equal to the raw voltage
+        return MAX(_BattMonitor_STATE(instance).voltage, _BattMonitor_STATE(instance).voltage_resting_estimate);
     } else {
         return 0.0f;
     }
@@ -311,12 +327,24 @@ bool AP_BattMonitor::exhausted(uint8_t instance, float low_voltage, float min_ca
         return false;
     }
 
+    // use voltage or sag compensated voltage
+    float voltage_used;
+    switch ((enum BattMonitor_LowVoltage_Source)_low_voltage_source.get()) {
+        case BattMonitor_LowVoltageSource_Raw:
+        default:
+            voltage_used = state[instance].voltage;
+            break;
+        case BattMonitor_LowVoltageSource_SagCompensated:
+            voltage_used = voltage_resting_estimate(instance);
+            break;
+    }
+
     // check voltage
-    if ((state[instance].voltage > 0) && (low_voltage > 0) && (state[instance].voltage < low_voltage)) {
+    if ((voltage_used > 0) && (low_voltage > 0) && (voltage_used < low_voltage)) {
         // this is the first time our voltage has dropped below minimum so start timer
         if (state[instance].low_voltage_start_ms == 0) {
             state[instance].low_voltage_start_ms = AP_HAL::millis();
-        } else if (_volt_timeout > 0 && AP_HAL::millis() - state[instance].low_voltage_start_ms > uint32_t(_volt_timeout.get())*1000U) {
+        } else if (_low_voltage_timeout > 0 && AP_HAL::millis() - state[instance].low_voltage_start_ms > uint32_t(_low_voltage_timeout.get())*1000U) {
             return true;
         }
     } else {
@@ -337,7 +365,7 @@ bool AP_BattMonitor::exhausted(uint8_t instance, float low_voltage, float min_ca
 bool AP_BattMonitor::overpower_detected() const
 {
     bool result = false;
-    for (int instance = 0; instance < _num_instances; instance++) {
+    for (uint8_t instance = 0; instance < _num_instances; instance++) {
         result |= overpower_detected(instance);
     }
     return result;
@@ -354,6 +382,15 @@ bool AP_BattMonitor::overpower_detected(uint8_t instance) const
 #else
     return false;
 #endif
+}
+
+bool AP_BattMonitor::has_cell_voltages(const uint8_t instance) const
+{
+    if (instance < _num_instances && drivers[instance] != nullptr) {
+        return drivers[instance]->has_cell_voltages();
+    }
+
+    return false;
 }
 
 // return the current cell voltages, returns the first monitor instances cells if the instance is out of range

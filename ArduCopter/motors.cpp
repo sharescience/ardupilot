@@ -175,7 +175,7 @@ bool Copter::init_arm_motors(bool arming_from_gcs)
         Log_Write_Event(DATA_EKF_ALT_RESET);
     } else if (ap.home_state == HOME_SET_NOT_LOCKED) {
         // Reset home position if it has already been set before (but not locked)
-        set_home_to_current_location();
+        set_home_to_current_location(false);
     }
     calc_distance_and_bearing();
 
@@ -259,10 +259,6 @@ void Copter::init_disarm_motors()
     // reset the mission
     mission.reset();
 
-    // suspend logging
-    if (!DataFlash.log_while_disarmed()) {
-        DataFlash.EnableWrites(false);
-    }
     DataFlash_Class::instance()->set_vehicle_armed(false);
 
     // disable gps velocity based centrefugal force compensation

@@ -207,20 +207,6 @@ void NOINLINE Copter::send_current_waypoint(mavlink_channel_t chan)
     mavlink_msg_mission_current_send(chan, mission.get_current_nav_index());
 }
 
-#if RANGEFINDER_ENABLED == ENABLED
-void NOINLINE Copter::send_rangefinder(mavlink_channel_t chan)
-{
-    // exit immediately if rangefinder is disabled
-    if (!rangefinder.has_data_orient(ROTATION_PITCH_270)) {
-        return;
-    }
-    mavlink_msg_rangefinder_send(
-            chan,
-            rangefinder.distance_cm_orient(ROTATION_PITCH_270) * 0.01f,
-            rangefinder.voltage_mv_orient(ROTATION_PITCH_270) * 0.001f);
-}
-#endif
-
 void NOINLINE Copter::send_proximity(mavlink_channel_t chan, uint16_t count_max)
 {
 #if PROXIMITY_ENABLED == ENABLED
@@ -238,19 +224,19 @@ void NOINLINE Copter::send_proximity(mavlink_channel_t chan, uint16_t count_max)
 
     // send horizontal distances
     AP_Proximity::Proximity_Distance_Array dist_array;
-    uint8_t horiz_count = MIN(count_max, 8);    // send at most 8 horizontal distances
+    const uint8_t horiz_count = MIN(count_max, PROXIMITY_MAX_DIRECTION);  // send at most PROXIMITY_MAX_DIRECTION horizontal distances
     if (g2.proximity.get_horizontal_distances(dist_array)) {
-        for (uint8_t i=0; i<horiz_count; i++) {
+        for (uint8_t i = 0; i < horiz_count; i++) {
             mavlink_msg_distance_sensor_send(
                 chan,
-                AP_HAL::millis(),               //  time since system boot
+                AP_HAL::millis(),                               //  time since system boot
                 (uint16_t)(g2.proximity.distance_min() * 100),  // minimum distance the sensor can measure in centimeters
                 (uint16_t)(g2.proximity.distance_max() * 100),  // maximum distance the sensor can measure in centimeters
-                (uint16_t)(dist_array.distance[i] * 100),   // current distance reading (in cm?)
-                MAV_DISTANCE_SENSOR_LASER,      // type from MAV_DISTANCE_SENSOR enum
-                0,                              // onboard ID of the sensor
-                dist_array.orientation[i],      //  direction the sensor faces from MAV_SENSOR_ORIENTATION enum
-                1);                             // Measurement covariance in centimeters, 0 for unknown / invalid readings
+                (uint16_t)(dist_array.distance[i] * 100),       // current distance reading (in cm?)
+                MAV_DISTANCE_SENSOR_LASER,                      // type from MAV_DISTANCE_SENSOR enum
+                PROXIMITY_SENSOR_ID_START + i,                  // onboard ID of the sensor
+                dist_array.orientation[i],                      //  direction the sensor faces from MAV_SENSOR_ORIENTATION enum
+                0);                                             // Measurement covariance in centimeters, 0 for unknown / invalid readings
         }
         // check if we still have room to send upwards distance
         send_upwards = (count_max > 8);
@@ -261,14 +247,14 @@ void NOINLINE Copter::send_proximity(mavlink_channel_t chan, uint16_t count_max)
     if (send_upwards && g2.proximity.get_upward_distance(dist_up)) {
         mavlink_msg_distance_sensor_send(
             chan,
-            AP_HAL::millis(),               //  time since system boot
-            (uint16_t)(g2.proximity.distance_min() * 100),  // minimum distance the sensor can measure in centimeters
-            (uint16_t)(g2.proximity.distance_max() * 100),  // maximum distance the sensor can measure in centimeters
-            (uint16_t)(dist_up * 100),      // current distance reading
-            MAV_DISTANCE_SENSOR_LASER,      // type from MAV_DISTANCE_SENSOR enum
-            0,                              // onboard ID of the sensor
-            MAV_SENSOR_ROTATION_PITCH_90,   // direction upwards
-            1);                             // Measurement covariance in centimeters, 0 for unknown / invalid readings
+            AP_HAL::millis(),                                        //  time since system boot
+            (uint16_t)(g2.proximity.distance_min() * 100),           // minimum distance the sensor can measure in centimeters
+            (uint16_t)(g2.proximity.distance_max() * 100),           // maximum distance the sensor can measure in centimeters
+            (uint16_t)(dist_up * 100),                               // current distance reading
+            MAV_DISTANCE_SENSOR_LASER,                               // type from MAV_DISTANCE_SENSOR enum
+            PROXIMITY_SENSOR_ID_START + PROXIMITY_MAX_DIRECTION +1,  // onboard ID of the sensor
+            MAV_SENSOR_ROTATION_PITCH_90,                            // direction upwards
+            0);                                                      // Measurement covariance in centimeters, 0 for unknown / invalid readings
     }
 #endif
 }
@@ -472,7 +458,9 @@ bool GCS_MAVLINK_Copter::try_send_message(enum ap_message id)
     case MSG_RANGEFINDER:
 #if RANGEFINDER_ENABLED == ENABLED
         CHECK_PAYLOAD_SIZE(RANGEFINDER);
-        copter.send_rangefinder(chan);
+        send_rangefinder_downward(copter.rangefinder);
+        CHECK_PAYLOAD_SIZE(DISTANCE_SENSOR);
+        send_distance_sensor_downward(copter.rangefinder);
 #endif
         CHECK_PAYLOAD_SIZE(DISTANCE_SENSOR);
         copter.send_proximity(chan, comm_get_txspace(chan) / (packet_overhead()+9));
@@ -863,7 +851,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         // if we have not yet initialised (including allocating the motors
         // object) we drop this request. That prevents the GCS from getting
         // a confusing parameter count during bootup
-        if (!copter.ap.initialised_params) {
+        if (!copter.ap.initialised_params && !AP_BoardConfig::in_sensor_config_error()) {
             break;
         }
 
@@ -1156,7 +1144,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
             // param7 : altitude (absolute)
             result = MAV_RESULT_FAILED; // assume failure
             if(is_equal(packet.param1,1.0f) || (is_zero(packet.param5) && is_zero(packet.param6) && is_zero(packet.param7))) {
-                if (copter.set_home_to_current_location_and_lock()) {
+                if (copter.set_home_to_current_location(true)) {
                     result = MAV_RESULT_ACCEPTED;
                 }
             } else {
@@ -1168,7 +1156,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
                 new_home_loc.lat = (int32_t)(packet.param5 * 1.0e7f);
                 new_home_loc.lng = (int32_t)(packet.param6 * 1.0e7f);
                 new_home_loc.alt = (int32_t)(packet.param7 * 100.0f);
-                if (copter.set_home_and_lock(new_home_loc)) {
+                if (copter.set_home(new_home_loc, true)) {
                     result = MAV_RESULT_ACCEPTED;
                 }
             }
@@ -2005,7 +1993,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         mavlink_set_home_position_t packet;
         mavlink_msg_set_home_position_decode(msg, &packet);
         if((packet.latitude == 0) && (packet.longitude == 0) && (packet.altitude == 0)) {
-            copter.set_home_to_current_location_and_lock();
+            copter.set_home_to_current_location(true);
         } else {
             // sanity check location
             if (!check_latlng(packet.latitude, packet.longitude)) {
@@ -2015,7 +2003,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
             new_home_loc.lat = packet.latitude;
             new_home_loc.lng = packet.longitude;
             new_home_loc.alt = packet.altitude / 10;
-            copter.set_home_and_lock(new_home_loc);
+            copter.set_home(new_home_loc, true);
         }
         break;
     }

@@ -285,6 +285,7 @@ private:
             uint8_t motor_interlock_switch  : 1; // 23      // true if pilot is requesting motor interlock enable
             uint8_t in_arming_delay         : 1; // 24      // true while we are armed but waiting to spin motors
             uint8_t initialised_params      : 1; // 25      // true when the all parameters have been initialised. we cannot send parameters to the GCS until this is done
+            uint8_t compass_init_location   : 1; // 26      // true when the compass's initial location has been set
         };
         uint32_t value;
     } ap;
@@ -702,7 +703,6 @@ private:
     void send_hwstatus(mavlink_channel_t chan);
     void send_vfr_hud(mavlink_channel_t chan);
     void send_current_waypoint(mavlink_channel_t chan);
-    void send_rangefinder(mavlink_channel_t chan);
     void send_proximity(mavlink_channel_t chan, uint16_t count_max);
     void send_rpm(mavlink_channel_t chan);
     void rpm_update();
@@ -762,10 +762,8 @@ private:
     void userhook_SuperSlowLoop();
     void update_home_from_EKF();
     void set_home_to_current_location_inflight();
-    bool set_home_to_current_location();
-    bool set_home_to_current_location_and_lock();
-    bool set_home_and_lock(const Location& loc);
-    bool set_home(const Location& loc);
+    bool set_home_to_current_location(bool lock);
+    bool set_home(const Location& loc, bool lock);
     bool far_from_EKF_origin(const Location& loc);
     void set_system_time_from_GPS();
     void exit_mission();

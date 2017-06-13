@@ -207,8 +207,7 @@ void Copter::init_ardupilot()
     // Do GPS init
     gps.init(&DataFlash, serial_manager);
 
-    if(g.compass_enabled)
-        init_compass();
+    init_compass();
 
 #if OPTFLOW == ENABLED
     // make optflow available to AHRS
@@ -492,14 +491,20 @@ void Copter::check_usb_mux(void)
 bool Copter::should_log(uint32_t mask)
 {
 #if LOGGING_ENABLED == ENABLED
-    if (!(mask & g.log_bitmask) || in_mavlink_delay) {
+    if (in_mavlink_delay) {
         return false;
     }
-    bool ret = motors->armed() || DataFlash.log_while_disarmed();
-    if (ret && !DataFlash.logging_started() && !in_log_download) {
-        start_logging();
+    if (!(mask & g.log_bitmask)) {
+        return false;
     }
-    return ret;
+    if (!motors->armed() && !DataFlash.log_while_disarmed()) {
+        return false;
+    }
+    if (in_log_download) {
+        return false;
+    }
+    start_logging();
+    return true;
 #else
     return false;
 #endif
