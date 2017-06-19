@@ -145,21 +145,17 @@ void Rover::init_ardupilot()
     log_init();
 #endif
 
-    if (g.compass_enabled == true) {
-        if (!compass.init()|| !compass.read()) {
-            cliSerial->printf("Compass initialisation failed!\n");
-            g.compass_enabled = false;
-        } else {
-            ahrs.set_compass(&compass);
-            // compass.get_offsets();  // load offsets to account for airframe magnetic interference
-        }
-    }
+    // initialise compass
+    init_compass();
 
     // initialise sonar
     init_sonar();
 
     // init beacons used for non-gps position estimation
     init_beacon();
+
+    // init visual odometry
+    init_visual_odom();
 
     // and baro for EKF
     init_barometer(true);
@@ -544,13 +540,10 @@ uint8_t Rover::check_digital_pin(uint8_t pin)
  */
 bool Rover::should_log(uint32_t mask)
 {
-    if (in_mavlink_delay) {
-        return false;
-    }
     if (!(mask & g.log_bitmask)) {
         return false;
     }
-    if (!hal.util->get_soft_armed() && !DataFlash.log_while_disarmed()) {
+    if (!DataFlash.should_log()) {
         return false;
     }
     if (in_log_download) {

@@ -85,9 +85,9 @@ int8_t Rover::dump_log(uint8_t argc, const Menu::arg *argv)
 
 int8_t Rover::erase_logs(uint8_t argc, const Menu::arg *argv)
 {
-    in_mavlink_delay = true;
+    DataFlash.EnableWrites(false);
     do_erase_logs();
-    in_mavlink_delay = false;
+    DataFlash.EnableWrites(true);
     return 0;
 }
 
@@ -472,15 +472,9 @@ const LogStructure Rover::log_structure[] = {
 void Rover::log_init(void)
 {
     DataFlash.Init(log_structure, ARRAY_SIZE(log_structure));
-    if (!DataFlash.CardInserted()) {
-        gcs_send_text(MAV_SEVERITY_WARNING, "No dataflash card inserted");
-    } else if (DataFlash.NeedPrep()) {
-        gcs_send_text(MAV_SEVERITY_INFO, "Preparing log system");
-        DataFlash.Prep();
-        gcs_send_text(MAV_SEVERITY_INFO, "Prepared log system");
-        for (uint8_t i=0; i < num_gcs; i++) {
-            gcs_chan[i].reset_cli_timeout();
-        }
+
+    for (uint8_t i=0; i < num_gcs; i++) {
+        gcs_chan[i].reset_cli_timeout();
     }
 
     if (g.log_bitmask != 0) {
@@ -516,9 +510,9 @@ void Rover::Log_Write_Vehicle_Startup_Messages()
 // start a new log
 void Rover::start_logging()
 {
-    in_mavlink_delay = true;
+    DataFlash.EnableWrites(false);
     DataFlash.StartUnstartedLogging();
-    in_mavlink_delay = false;
+    DataFlash.EnableWrites(true);
 }
 
 #else  // LOGGING_ENABLED

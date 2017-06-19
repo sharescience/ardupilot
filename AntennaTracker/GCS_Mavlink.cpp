@@ -267,6 +267,7 @@ bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
     case MSG_GIMBAL_REPORT:
     case MSG_EKF_STATUS_REPORT:
     case MSG_PID_TUNING:
+    case MSG_ANGLE_TRACE:
     case MSG_VIBRATION:
     case MSG_RPM:
     case MSG_MISSION_ITEM_REACHED:
@@ -690,7 +691,8 @@ void GCS_MAVLINK_Tracker::handleMessage(mavlink_message_t* msg)
         mavlink_msg_command_ack_send(
             chan,
             packet.command,
-            result);
+            result,
+			0);
         
         break;
     }
@@ -848,10 +850,6 @@ mission_failed:
         }
         break;
 
-    case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
-        tracker.DataFlash.remote_log_block_status_msg(chan, msg);
-        break;
-
     case MAVLINK_MSG_ID_SERIAL_CONTROL:
         handle_serial_control(msg, tracker.gps);
         break;
@@ -889,6 +887,7 @@ void Tracker::mavlink_delay_cb()
     if (!gcs_chan[0].initialised) return;
 
     tracker.in_mavlink_delay = true;
+    DataFlash.EnableWrites(false);
 
     uint32_t tnow = AP_HAL::millis();
     if (tnow - last_1hz > 1000) {
@@ -906,6 +905,7 @@ void Tracker::mavlink_delay_cb()
         last_5s = tnow;
         gcs_send_text(MAV_SEVERITY_INFO, "Initialising APM");
     }
+    DataFlash.EnableWrites(true);
     tracker.in_mavlink_delay = false;
 }
 

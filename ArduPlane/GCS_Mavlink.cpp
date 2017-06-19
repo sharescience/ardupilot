@@ -345,7 +345,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -362,7 +364,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -379,7 +383,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -392,7 +398,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -406,7 +414,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                         pid_info->FF,
                                         pid_info->P,
                                         pid_info->I,
-                                        pid_info->D);
+                                        pid_info->D,
+										pid_info->PreD,
+										0.0f);
         }
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
@@ -655,6 +665,9 @@ bool GCS_MAVLINK_Plane::try_send_message(enum ap_message id)
         CHECK_PAYLOAD_SIZE(PID_TUNING);
         plane.send_pid_tuning(chan);
         break;
+
+    case MSG_ANGLE_TRACE:
+    	break;
 
     case MSG_VIBRATION:
         CHECK_PAYLOAD_SIZE(VIBRATION);
@@ -1061,7 +1074,8 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
             msg,
             chan,
             packet.command,
-            result);
+            result,
+			0);
 
         break;
     }
@@ -1397,12 +1411,6 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
                     result = MAV_RESULT_ACCEPTED;
                 }
             }
-
-            if (result == MAV_RESULT_ACCEPTED) {
-                plane.gcs_send_text(MAV_SEVERITY_INFO,"Go around command accepted");
-            } else {
-                plane.gcs_send_text(MAV_SEVERITY_NOTICE,"Rejected go around command");
-            }
             break;
 
         case MAV_CMD_DO_FENCE_ENABLE:
@@ -1562,7 +1570,8 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
             msg,
             chan,
             packet.command,
-            result);
+            result,
+			0);
 
         break;
     }
@@ -1958,10 +1967,6 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
         // send message to Notify
         AP_Notify::handle_play_tune(msg);
         break;
-        
-    case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
-        plane.DataFlash.remote_log_block_status_msg(chan, msg);
-        break;
 
     case MAVLINK_MSG_ID_SET_ATTITUDE_TARGET:
     {
@@ -2138,6 +2143,7 @@ void Plane::mavlink_delay_cb()
     if (!gcs().chan(0).initialised || in_mavlink_delay) return;
 
     in_mavlink_delay = true;
+    DataFlash.EnableWrites(false);
 
     uint32_t tnow = millis();
     if (tnow - last_1hz > 1000) {
@@ -2156,6 +2162,7 @@ void Plane::mavlink_delay_cb()
         gcs_send_text(MAV_SEVERITY_INFO, "Initialising APM");
     }
 
+    DataFlash.EnableWrites(true);
     in_mavlink_delay = false;
 }
 

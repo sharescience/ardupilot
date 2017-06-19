@@ -382,7 +382,9 @@ void Sub::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info.FF*0.01f,
                                     pid_info.P*0.01f,
                                     pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.D*0.01f,
+									pid_info.PreD*0.01f,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -395,7 +397,9 @@ void Sub::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info.FF*0.01f,
                                     pid_info.P*0.01f,
                                     pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.D*0.01f,
+									pid_info.PreD*0.01f,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -408,7 +412,9 @@ void Sub::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info.FF*0.01f,
                                     pid_info.P*0.01f,
                                     pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.D*0.01f,
+									pid_info.PreD*0.01f,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -421,7 +427,9 @@ void Sub::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info.FF*0.01f,
                                     pid_info.P*0.01f,
                                     pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.D*0.01f,
+									pid_info.PreD*0.01f,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -646,6 +654,9 @@ bool GCS_MAVLINK_Sub::try_send_message(enum ap_message id)
         CHECK_PAYLOAD_SIZE(PID_TUNING);
         sub.send_pid_tuning(chan);
         break;
+
+    case MSG_ANGLE_TRACE:
+    	break;
 
     case MSG_VIBRATION:
         CHECK_PAYLOAD_SIZE(VIBRATION);
@@ -1060,7 +1071,7 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0);
         break;
     }
 
@@ -1440,7 +1451,7 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0);
 
         break;
     }
@@ -1760,10 +1771,6 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
     }
 #endif // AC_RALLY == ENABLED
 
-    case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
-        sub.DataFlash.remote_log_block_status_msg(chan, msg);
-        break;
-
     case MAVLINK_MSG_ID_AUTOPILOT_VERSION_REQUEST:
         send_autopilot_version(FIRMWARE_VERSION);
         break;
@@ -1828,6 +1835,7 @@ void Sub::mavlink_delay_cb()
     }
 
     in_mavlink_delay = true;
+    DataFlash.EnableWrites(false);
 
     uint32_t tnow = millis();
     if (tnow - last_1hz > 1000) {
@@ -1847,6 +1855,7 @@ void Sub::mavlink_delay_cb()
         gcs_send_text(MAV_SEVERITY_INFO, "Initialising APM");
     }
 
+    DataFlash.EnableWrites(true);
     in_mavlink_delay = false;
 }
 
