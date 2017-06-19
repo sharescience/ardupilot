@@ -2127,7 +2127,8 @@ void DataFlash_Class::Log_Write_PID(uint8_t msg_type, const PID_Info &info)
         I               : info.I,
         D               : info.D,
         FF              : info.FF,
-        AFF             : info.AFF
+        AFF             : info.AFF,
+		PreD            : info.PreD
     };
     WriteBlock(&pkt, sizeof(pkt));
 }

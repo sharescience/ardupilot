@@ -124,6 +124,7 @@ void AC_PID::set_input_filter_d(float input)
     // update filter and calculate derivative
     if (_dt > 0.0f) {
         float derivative = (input - _input) / _dt;
+        _pid_info.PreD = _kd *derivative;
         _derivative = _derivative + get_filt_alpha() * (derivative-_derivative);
     }
 

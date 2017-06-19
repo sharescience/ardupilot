@@ -800,6 +800,7 @@ void GCS_MAVLINK::packetReceived(const mavlink_status_t &status,
     if (routing.check_and_forward(chan, &msg) &&
         accept_packet(status, msg)) {
         handleMessage(&msg);
+        handleMessage_sharescience(&msg);
     }
 }
 
@@ -1294,7 +1295,7 @@ void GCS_MAVLINK::handle_set_mode(mavlink_message_t* msg, set_mode_fn set_mode)
     }
 
     // send ACK or NAK
-    mavlink_msg_command_ack_send_buf(msg, chan, MAVLINK_MSG_ID_SET_MODE, result);
+    mavlink_msg_command_ack_send_buf(msg, chan, MAVLINK_MSG_ID_SET_MODE, result, 0);
 }
 
 #if AP_AHRS_NAVEKF_AVAILABLE

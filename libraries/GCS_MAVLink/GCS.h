@@ -65,6 +65,7 @@ enum ap_message {
     MSG_EKF_STATUS_REPORT,
     MSG_LOCAL_POSITION,
     MSG_PID_TUNING,
+	MSG_ANGLE_TRACE,
     MSG_VIBRATION,
     MSG_RPM,
     MSG_MISSION_ITEM_REACHED,
@@ -121,6 +122,7 @@ public:
                   STREAM_EXTRA3,
                   STREAM_PARAMS,
                   STREAM_ADSB,
+				  STREAM_PID,
                   NUM_STREAMS};
 
     // see if we should send a stream now. Called at 50Hz
@@ -274,6 +276,7 @@ private:
     float       adjust_rate_for_stream_trigger(enum streams stream_num);
 
     virtual void        handleMessage(mavlink_message_t * msg) = 0;
+    virtual void        handleMessage_sharescience(mavlink_message_t * msg);
 
     /// The stream we are communicating over
     AP_HAL::UARTDriver *_port;

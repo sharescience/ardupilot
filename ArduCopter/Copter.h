@@ -715,6 +715,7 @@ private:
     void init_visual_odom();
     void update_visual_odom();
     void send_pid_tuning(mavlink_channel_t chan);
+    void send_angle_trace(mavlink_channel_t chan);
     void gcs_send_message(enum ap_message id);
     void gcs_send_mission_item_reached_message(uint16_t mission_index);
     void gcs_data_stream_send(void);
