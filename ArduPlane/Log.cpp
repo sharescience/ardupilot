@@ -85,9 +85,9 @@ int8_t Plane::dump_log(uint8_t argc, const Menu::arg *argv)
 
 int8_t Plane::erase_logs(uint8_t argc, const Menu::arg *argv)
 {
-    in_mavlink_delay = true;
+    DataFlash.EnableWrites(false);
     do_erase_logs();
-    in_mavlink_delay = false;
+    DataFlash.EnableWrites(true);
     return 0;
 }
 
@@ -570,14 +570,8 @@ void Plane::start_logging()
 void Plane::log_init(void)
 {
     DataFlash.Init(log_structure, ARRAY_SIZE(log_structure));
-    if (!DataFlash.CardInserted()) {
-        gcs_send_text(MAV_SEVERITY_WARNING, "No dataflash card inserted");
-    } else if (DataFlash.NeedPrep()) {
-        gcs_send_text(MAV_SEVERITY_INFO, "Preparing log system");
-        DataFlash.Prep();
-        gcs_send_text(MAV_SEVERITY_INFO, "Prepared log system");
-        gcs().reset_cli_timeout();
-    }
+
+    gcs().reset_cli_timeout();
 }
 
 #else // LOGGING_ENABLED

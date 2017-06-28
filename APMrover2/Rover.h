@@ -73,6 +73,7 @@
 #include <AP_Button/AP_Button.h>
 #include <AP_Stats/AP_Stats.h>                      // statistics library
 #include <AP_Beacon/AP_Beacon.h>
+#include <AP_VisualOdom/AP_VisualOdom.h>
 
 // Configuration
 #include "config.h"
@@ -134,8 +135,6 @@ private:
     RC_Channel *channel_learn;
 
     DataFlash_Class DataFlash;
-
-    bool in_log_download;
 
     // sensor drivers
     AP_GPS gps;
@@ -208,6 +207,9 @@ private:
     AP_Mount camera_mount;
 #endif
 
+    // true if initialisation has completed
+    bool initialised;
+
     // if USB is connected
     bool usb_connected;
 
@@ -241,10 +243,6 @@ private:
 
     // notification object for LEDs, buzzers etc (parameter set to false disables external leds)
     AP_Notify notify;
-
-    // A counter used to count down valid gps fixes to allow the gps estimate to settle
-    // before recording our home position (and executing a ground start if we booted with an air start)
-    uint8_t ground_start_count;
 
     // true if we have a position estimate from AHRS
     bool have_position;
@@ -284,7 +282,6 @@ private:
     // Ground speed
     // The amount current ground speed is below min ground speed.  meters per second
     float ground_speed;
-    int16_t throttle_last;
     int16_t throttle;
 
     // CH7 control
@@ -333,6 +330,12 @@ private:
 
     // Flag for if we have g_gps lock and have set the home location in AHRS
     enum HomeState home_is_set = HOME_UNSET;
+
+    // true if the system time has been set from the GPS
+    bool system_time_set;
+
+    // true if the compass's initial location has been set
+    bool compass_init_location;
 
     // The location of the previous waypoint.  Used for track following and altitude ramp calculations
     struct Location prev_WP;
@@ -402,6 +405,9 @@ private:
     // Store the time the last GPS message was received.
     uint32_t last_gps_msg_ms{0};
 
+    // last visual odometry update time
+    uint32_t visual_odom_last_update_ms;
+
 private:
     // private member functions
     void ahrs_update();
@@ -409,6 +415,7 @@ private:
     void update_trigger(void);
     void update_alt();
     void gcs_failsafe_check(void);
+    void init_compass(void);
     void compass_accumulate(void);
     void compass_cal_update(void);
     void update_compass(void);
@@ -462,17 +469,22 @@ private:
     void Log_Arm_Disarm();
 
     void load_parameters(void);
-    void throttle_slew_limit(int16_t last_throttle);
+    void throttle_slew_limit(void);
     bool auto_check_trigger(void);
     bool use_pivot_steering(void);
     void calc_throttle(float target_speed);
     void calc_lateral_acceleration();
     void calc_nav_steer();
+    bool have_skid_steering();
+    void mix_skid_steering();
     void set_servos(void);
     void set_auto_WP(const struct Location& loc);
     void set_guided_WP(const struct Location& loc);
     void set_guided_velocity(float target_steer_speed, float target_speed);
-    void init_home();
+    void update_home_from_EKF();
+    bool set_home_to_current_location(bool lock);
+    bool set_home(const Location& loc, bool lock);
+    void set_system_time_from_GPS();
     void restart_nav();
     void exit_mission();
     void do_RTL(void);
@@ -507,6 +519,8 @@ private:
     void init_sonar(void);
     void init_beacon();
     void update_beacon();
+    void init_visual_odom();
+    void update_visual_odom();
     void read_battery(void);
     void read_receiver_rssi(void);
     void read_sonars(void);

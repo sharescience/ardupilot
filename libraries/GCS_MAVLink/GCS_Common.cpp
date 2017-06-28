@@ -1680,6 +1680,17 @@ void GCS_MAVLINK::handle_common_message(mavlink_message_t *msg)
     case MAVLINK_MSG_ID_TIMESYNC:
         handle_timesync(msg);
         break;
+    case MAVLINK_MSG_ID_LOG_REQUEST_LIST:
+        /* fall through */
+    case MAVLINK_MSG_ID_LOG_REQUEST_DATA:
+        /* fall through */
+    case MAVLINK_MSG_ID_LOG_ERASE:
+        /* fall through */
+    case MAVLINK_MSG_ID_LOG_REQUEST_END:
+        /* fall through */
+    case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
+        DataFlash_Class::instance()->handle_mavlink_msg(*this, msg);
+        break;
     }
 }
 

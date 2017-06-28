@@ -164,12 +164,12 @@ void NOINLINE Copter::send_nav_controller_output(mavlink_channel_t chan)
     const Vector3f &targets = attitude_control->get_att_target_euler_cd();
     mavlink_msg_nav_controller_output_send(
         chan,
-        targets.x / 1.0e2f,
-        targets.y / 1.0e2f,
-        targets.z / 1.0e2f,
-        wp_bearing / 1.0e2f,
-        wp_distance / 1.0e2f,
-        pos_control->get_alt_error() / 1.0e2f,
+        targets.x * 1.0e-2f,
+        targets.y * 1.0e-2f,
+        targets.z * 1.0e-2f,
+        wp_bearing * 1.0e-2f,
+        MIN(wp_distance * 1.0e-2f, UINT16_MAX),
+        pos_control->get_alt_error() * 1.0e-2f,
         0,
         0);
 }
@@ -696,7 +696,7 @@ GCS_MAVLINK_Copter::data_stream_send(void)
     }
 
     if (!copter.in_mavlink_delay && !copter.motors->armed()) {
-        handle_log_send(copter.DataFlash);
+        copter.DataFlash.handle_log_send(*this);
     }
 
     copter.gcs_out_of_time = false;
@@ -1837,23 +1837,6 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         break;
     }
 
-    case MAVLINK_MSG_ID_LOG_REQUEST_DATA:
-        copter.in_log_download = true;
-        /* no break */
-    case MAVLINK_MSG_ID_LOG_ERASE:
-        /* no break */
-    case MAVLINK_MSG_ID_LOG_REQUEST_LIST:
-        if (!copter.in_mavlink_delay && !copter.motors->armed()) {
-            handle_log_message(msg, copter.DataFlash);
-        }
-        break;
-    case MAVLINK_MSG_ID_LOG_REQUEST_END:
-        copter.in_log_download = false;
-        if (!copter.in_mavlink_delay && !copter.motors->armed()) {
-            handle_log_message(msg, copter.DataFlash);
-        }
-        break;
-
     case MAVLINK_MSG_ID_SERIAL_CONTROL:
         handle_serial_control(msg, copter.gps);
         break;
@@ -1970,10 +1953,6 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
     }
 #endif // AC_RALLY == ENABLED
 
-    case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
-        copter.DataFlash.remote_log_block_status_msg(chan, msg);
-        break;
-
     case MAVLINK_MSG_ID_AUTOPILOT_VERSION_REQUEST:
         send_autopilot_version(FIRMWARE_VERSION);
         break;
@@ -2042,6 +2021,7 @@ void Copter::mavlink_delay_cb()
     if (!gcs_chan[0].initialised || in_mavlink_delay) return;
 
     in_mavlink_delay = true;
+    DataFlash.EnableWrites(false);
 
     uint32_t tnow = millis();
     if (tnow - last_1hz > 1000) {
@@ -2062,6 +2042,7 @@ void Copter::mavlink_delay_cb()
     }
     check_usb_mux();
 
+    DataFlash.EnableWrites(true);
     in_mavlink_delay = false;
 }
 

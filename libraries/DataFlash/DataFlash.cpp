@@ -4,6 +4,7 @@
 
 #include "DataFlash_File.h"
 #include "DataFlash_MAVLink.h"
+#include <GCS_MAVLink/GCS.h>
 
 DataFlash_Class *DataFlash_Class::_instance;
 
@@ -49,6 +50,7 @@ const AP_Param::GroupInfo DataFlash_Class::var_info[] = {
 
 void DataFlash_Class::Init(const struct LogStructure *structures, uint8_t num_types)
 {
+    GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_INFO, "Preparing log system");
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
     validate_structures(structures, num_types);
     dump_structures(structures, num_types);
@@ -104,6 +106,12 @@ void DataFlash_Class::Init(const struct LogStructure *structures, uint8_t num_ty
     for (uint8_t i=0; i<_next_backend; i++) {
         backends[i]->Init();
     }
+
+    Prep();
+
+    EnableWrites(true);
+
+    GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_INFO, "Prepared log system");
 }
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
@@ -127,29 +135,29 @@ static uint8_t count_commas(const char *string)
 }
 
 /// pretty-print field information from a log structure
-void DataFlash_Class::dump_structure_field(const struct LogStructure *structure, const char *label, const uint8_t fieldnum)
+void DataFlash_Class::dump_structure_field(const struct LogStructure *logstructure, const char *label, const uint8_t fieldnum)
 {
     ::fprintf(stderr, "  %s\n", label);
 }
 
 /// pretty-print log structures
 /// @note structures MUST be well-formed
-void DataFlash_Class::dump_structures(const struct LogStructure *structures, const uint8_t num_types)
+void DataFlash_Class::dump_structures(const struct LogStructure *logstructures, const uint8_t num_types)
 {
 #if DEBUG_LOG_STRUCTURES
     for (uint16_t i=0; i<num_types; i++) {
-        const struct LogStructure *structure = &structures[i];
-        ::fprintf(stderr, "%s\n", structure->name);
+        const struct LogStructure *logstructure = &logstructures[i];
+        ::fprintf(stderr, "%s\n", logstructure->name);
         char label[32] = { };
         uint8_t labeloffset = 0;
         int8_t fieldnum = 0;
-        for (uint8_t j=0; j<strlen(structure->labels); j++) {
-            char labelchar = structure->labels[j];
+        for (uint8_t j=0; j<strlen(logstructure->labels); j++) {
+            char labelchar = logstructure->labels[j];
             if (labelchar == '\0') {
                 break;
             }
             if (labelchar == ',') {
-                dump_structure_field(structure, label, fieldnum);
+                dump_structure_field(logstructure, label, fieldnum);
                 fieldnum++;
                 labeloffset = 0;
                 memset(label, '\0', 32);
@@ -157,20 +165,20 @@ void DataFlash_Class::dump_structures(const struct LogStructure *structures, con
                 label[labeloffset++] = labelchar;
             }
         }
-        dump_structure_field(structure, label, fieldnum);
+        dump_structure_field(logstructure, label, fieldnum);
         ::fprintf(stderr, "\n"); // just add a CR to the output
     }
 #endif
 }
 
-void DataFlash_Class::validate_structures(const struct LogStructure *structures, const uint8_t num_types)
+void DataFlash_Class::validate_structures(const struct LogStructure *logstructures, const uint8_t num_types)
 {
     Debug("Validating structures");
     bool passed = true;
 
     bool seen_ids[256] = { };
     for (uint16_t i=0; i<num_types; i++) {
-        const struct LogStructure *logstructure = &structures[i];
+        const struct LogStructure *logstructure = &logstructures[i];
 
 #if DEBUG_LOG_STRUCTURES
         Debug("offset=%d ID=%d NAME=%s\n", i, logstructure->msg_type, logstructure->name);
@@ -213,15 +221,15 @@ void DataFlash_Class::validate_structures(const struct LogStructure *structures,
 
 #else
 
-void DataFlash_Class::dump_structure_field(const struct LogStructure *_structure, const char *label, const uint8_t fieldnum)
+void DataFlash_Class::dump_structure_field(const struct LogStructure *logstructure, const char *label, const uint8_t fieldnum)
 {
 }
 
-void DataFlash_Class::dump_structures(const struct LogStructure *structures, const uint8_t num_types)
+void DataFlash_Class::dump_structures(const struct LogStructure *logstructures, const uint8_t num_types)
 {
 }
 
-void DataFlash_Class::validate_structures(const struct LogStructure *structures, const uint8_t num_types)
+void DataFlash_Class::validate_structures(const struct LogStructure *logstructures, const uint8_t num_types)
 {
     return;
 }
@@ -299,6 +307,21 @@ void DataFlash_Class::StartUnstartedLogging(void)
     }
 }
 
+bool DataFlash_Class::should_log() const
+{
+    if (!vehicle_is_armed() && !log_while_disarmed()) {
+        return false;
+    }
+    if (in_log_download()) {
+        return false;
+    }
+    if (_next_backend == 0) {
+        return false;
+    }
+    return true;
+}
+
+
 #define FOR_EACH_BACKEND(methodcall)              \
     do {                                          \
         for (uint8_t i=0; i<_next_backend; i++) { \
@@ -352,15 +375,6 @@ void DataFlash_Class::EraseAll() {
 bool DataFlash_Class::CardInserted(void) {
     for (uint8_t i=0; i< _next_backend; i++) {
         if (backends[i]->CardInserted()) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool DataFlash_Class::NeedPrep() {
-    for (uint8_t i=0; i< _next_backend; i++) {
-        if (backends[i]->NeedPrep()) {
             return true;
         }
     }
@@ -449,16 +463,23 @@ bool DataFlash_Class::logging_started(void) {
     return false;
 }
 
-void DataFlash_Class::EnableWrites(bool enable) {
-    FOR_EACH_BACKEND(EnableWrites(enable));
+void DataFlash_Class::handle_mavlink_msg(GCS_MAVLINK &link, mavlink_message_t* msg)
+{
+    switch (msg->msgid) {
+    case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
+        FOR_EACH_BACKEND(remote_log_block_status_msg(link.get_chan(), msg));
+        break;
+    case MAVLINK_MSG_ID_LOG_REQUEST_LIST:
+        /* fall through */
+    case MAVLINK_MSG_ID_LOG_REQUEST_DATA:
+        /* fall through */
+    case MAVLINK_MSG_ID_LOG_ERASE:
+        /* fall through */
+    case MAVLINK_MSG_ID_LOG_REQUEST_END:
+        handle_log_message(link, msg);
+        break;
+    }
 }
-
-// for DataFlash_MAVLink
-void DataFlash_Class::remote_log_block_status_msg(mavlink_channel_t chan,
-                                                  mavlink_message_t* msg) {
-    FOR_EACH_BACKEND(remote_log_block_status_msg(chan, msg));
-}
-// end for DataFlash_MAVLink
 
 void DataFlash_Class::periodic_tasks() {
      FOR_EACH_BACKEND(periodic_tasks());

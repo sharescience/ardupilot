@@ -74,10 +74,6 @@ public:
     bool NeedErase(void);
     void EraseAll();
 
-    // possibly expensive calls to start log system:
-    bool NeedPrep();
-    void Prep();
-
     // get a pointer to structures
     const struct LogStructure *get_structures(uint8_t &num_types) {
         num_types = _num_types;
@@ -92,7 +88,6 @@ public:
     // high level interface
     uint16_t find_last_log() const;
     void get_log_boundaries(uint16_t log_num, uint16_t & start_page, uint16_t & end_page);
-    void get_log_info(uint16_t log_num, uint32_t &size, uint32_t &time_utc);
     int16_t get_log_data(uint16_t log_num, uint16_t page, uint32_t offset, uint16_t len, uint8_t *data);
     uint16_t get_num_logs(void);
     void LogReadProcess(uint16_t log_num,
@@ -108,7 +103,8 @@ public:
     /* poke backends to start if they're not already started */
     void StartUnstartedLogging(void);
 
-    void EnableWrites(bool enable);
+    void EnableWrites(bool enable) { _writes_enabled = enable; }
+    bool WritesEnabled() const { return _writes_enabled; }
 
     void StopLogging();
 
@@ -171,6 +167,9 @@ public:
 
     void Log_Write_PID(uint8_t msg_type, const PID_Info &info);
 
+    // returns true of logging of a message should be attempted
+    bool should_log() const;
+
     bool logging_started(void);
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL || CONFIG_HAL_BOARD == HAL_BOARD_LINUX
@@ -178,10 +177,7 @@ public:
     void flush(void);
 #endif
 
-    // for DataFlash_MAVLink:
-    void remote_log_block_status_msg(mavlink_channel_t chan,
-                                     mavlink_message_t* msg);
-    // end for DataFlash_MAVLink:
+    void handle_mavlink_msg(class GCS_MAVLINK &, mavlink_message_t* msg);
 
     void periodic_tasks(); // may want to split this into GCS/non-GCS duties
 
@@ -215,6 +211,9 @@ public:
 
     void set_vehicle_armed(bool armed_state);
     bool vehicle_is_armed() const { return _armed; }
+
+    void handle_log_send(class GCS_MAVLINK &);
+    bool in_log_download() const { return _in_log_download; }
 
 protected:
 
@@ -281,9 +280,59 @@ private:
 private:
     static DataFlash_Class *_instance;
 
-    void validate_structures(const struct LogStructure *structures, const uint8_t num_types);
-    void dump_structure_field(const struct LogStructure *structure, const char *label, const uint8_t fieldnum);
-    void dump_structures(const struct LogStructure *structures, const uint8_t num_types);
+    void validate_structures(const struct LogStructure *logstructures, const uint8_t num_types);
+    void dump_structure_field(const struct LogStructure *logstructure, const char *label, const uint8_t fieldnum);
+    void dump_structures(const struct LogStructure *logstructures, const uint8_t num_types);
 
     void Log_Write_EKF_Timing(const char *name, uint64_t time_us, const struct ekf_timing &timing);
+
+    // possibly expensive calls to start log system:
+    void Prep();
+
+    bool _writes_enabled;
+
+    /* support for retrieving logs via mavlink: */
+    uint8_t  _log_listing:1; // sending log list
+    uint8_t  _log_sending:1; // sending log data
+
+    // bolean replicating old vehicle in_log_download flag:
+    bool _in_log_download:1;
+
+    // next log list entry to send
+    uint16_t _log_next_list_entry;
+
+    // last log list entry to send
+    uint16_t _log_last_list_entry;
+
+    // number of log files
+    uint16_t _log_num_logs;
+
+    // log number for data send
+    uint16_t _log_num_data;
+
+    // offset in log
+    uint32_t _log_data_offset;
+
+    // size of log file
+    uint32_t _log_data_size;
+
+    // number of bytes left to send
+    uint32_t _log_data_remaining;
+
+    // start page of log data
+    uint16_t _log_data_page;
+
+    bool should_handle_log_message();
+    void handle_log_message(class GCS_MAVLINK &, mavlink_message_t *msg);
+
+    void handle_log_request_list(class GCS_MAVLINK &, mavlink_message_t *msg);
+    void handle_log_request_data(class GCS_MAVLINK &, mavlink_message_t *msg);
+    void handle_log_request_erase(class GCS_MAVLINK &, mavlink_message_t *msg);
+    void handle_log_request_end(class GCS_MAVLINK &, mavlink_message_t *msg);
+    void handle_log_send_listing(class GCS_MAVLINK &);
+    bool handle_log_send_data(class GCS_MAVLINK &);
+
+    void get_log_info(uint16_t log_num, uint32_t &size, uint32_t &time_utc);
+    /* end support for retrieving logs via mavlink: */
+
 };

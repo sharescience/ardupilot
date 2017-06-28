@@ -12,266 +12,12 @@
 #include <AC_AttitudeControl/AC_PosControl.h>
 
 #include "DataFlash.h"
-#include "DataFlash_SITL.h"
-#include "DataFlash_Block.h"
 #include "DataFlash_File.h"
 #include "DataFlash_MAVLink.h"
 #include "DFMessageWriter.h"
 
 extern const AP_HAL::HAL& hal;
 
-// This function determines the number of whole or partial log files in the DataFlash
-// Wholly overwritten files are (of course) lost.
-uint16_t DataFlash_Block::get_num_logs(void)
-{
-    uint16_t lastpage;
-    uint16_t last;
-    uint16_t first;
-
-    if (find_last_page() == 1) {
-        return 0;
-    }
-
-    StartRead(1);
-
-    if (GetFileNumber() == 0xFFFF) {
-        return 0;
-    }
-
-    lastpage = find_last_page();
-    StartRead(lastpage);
-    last = GetFileNumber();
-    StartRead(lastpage + 2);
-    first = GetFileNumber();
-    if(first > last) {
-        StartRead(1);
-        first = GetFileNumber();
-    }
-
-    if (last == first) {
-        return 1;
-    }
-
-    return (last - first + 1);
-}
-
-// This function starts a new log file in the DataFlash
-uint16_t DataFlash_Block::start_new_log(void)
-{
-    _startup_messagewriter->reset();
-
-    uint16_t last_page = find_last_page();
-
-    StartRead(last_page);
-    //Serial.printf("last page: "); Serial.printf("%u\n", last_page);
-    //Serial.printf("file #: ");    Serial.printf("%u\n", GetFileNumber());
-    //Serial.printf("file page: "); Serial.printf("%u\n", GetFilePage());
-
-    if(find_last_log() == 0 || GetFileNumber() == 0xFFFF) {
-        SetFileNumber(1);
-        StartWrite(1);
-        //Serial.printf("start log from 0\n");
-        log_write_started = true;
-        return 1;
-    }
-
-    uint16_t new_log_num;
-
-    // Check for log of length 1 page and suppress
-    if(GetFilePage() <= 1) {
-        new_log_num = GetFileNumber();
-        // Last log too short, reuse its number
-        // and overwrite it
-        SetFileNumber(new_log_num);
-        StartWrite(last_page);
-    } else {
-        new_log_num = GetFileNumber()+1;
-        if (last_page == 0xFFFF) {
-            last_page=0;
-        }
-        SetFileNumber(new_log_num);
-        StartWrite(last_page + 1);
-    }
-    log_write_started = true;
-    return new_log_num;
-}
-
-// This function finds the first and last pages of a log file
-// The first page may be greater than the last page if the DataFlash has been filled and partially overwritten.
-void DataFlash_Block::get_log_boundaries(uint16_t log_num, uint16_t & start_page, uint16_t & end_page)
-{
-    uint16_t num = get_num_logs();
-    uint16_t look;
-
-    if (df_BufferIdx != 0) {
-        FinishWrite();
-        hal.scheduler->delay(100);
-    }
-
-    if(num == 1)
-    {
-        StartRead(df_NumPages);
-        if (GetFileNumber() == 0xFFFF)
-        {
-            start_page = 1;
-            end_page = find_last_page_of_log((uint16_t)log_num);
-        } else {
-            end_page = find_last_page_of_log((uint16_t)log_num);
-            start_page = end_page + 1;
-        }
-
-    } else {
-        if(log_num==1) {
-            StartRead(df_NumPages);
-            if(GetFileNumber() == 0xFFFF) {
-                start_page = 1;
-            } else {
-                start_page = find_last_page() + 1;
-            }
-        } else {
-            if(log_num == find_last_log() - num + 1) {
-                start_page = find_last_page() + 1;
-            } else {
-                look = log_num-1;
-                do {
-                    start_page = find_last_page_of_log(look) + 1;
-                    look--;
-                } while (start_page <= 0 && look >=1);
-            }
-        }
-    }
-    if (start_page == df_NumPages+1 || start_page == 0) {
-        start_page = 1;
-    }
-    end_page = find_last_page_of_log(log_num);
-    if (end_page == 0) {
-        end_page = start_page;
-    }
-}
-
-// find log size and time
-void DataFlash_Block::get_log_info(uint16_t log_num, uint32_t &size, uint32_t &time_utc)
-{
-    uint16_t start, end;
-    get_log_boundaries(log_num, start, end);
-    if (end >= start) {
-        size = (end + 1 - start) * (uint32_t)df_PageSize;
-    } else {
-        size = (df_NumPages + end - start) * (uint32_t)df_PageSize;
-    }
-    time_utc = 0;
-}
-
-bool DataFlash_Block::check_wrapped(void)
-{
-    StartRead(df_NumPages);
-    if(GetFileNumber() == 0xFFFF)
-        return 0;
-    else
-        return 1;
-}
-
-// This function finds the last log number
-uint16_t DataFlash_Block::find_last_log(void)
-{
-    uint16_t last_page = find_last_page();
-    StartRead(last_page);
-    return GetFileNumber();
-}
-
-// This function finds the last page of the last file
-uint16_t DataFlash_Block::find_last_page(void)
-{
-    uint16_t look;
-    uint16_t bottom = 1;
-    uint16_t top = df_NumPages;
-    uint32_t look_hash;
-    uint32_t bottom_hash;
-    uint32_t top_hash;
-
-    StartRead(bottom);
-    bottom_hash = ((int32_t)GetFileNumber()<<16) | GetFilePage();
-
-    while(top-bottom > 1) {
-        look = (top+bottom)/2;
-        StartRead(look);
-        look_hash = (int32_t)GetFileNumber()<<16 | GetFilePage();
-        if (look_hash >= 0xFFFF0000) look_hash = 0;
-
-        if(look_hash < bottom_hash) {
-            // move down
-            top = look;
-        } else {
-            // move up
-            bottom = look;
-            bottom_hash = look_hash;
-        }
-    }
-
-    StartRead(top);
-    top_hash = ((int32_t)GetFileNumber()<<16) | GetFilePage();
-    if (top_hash >= 0xFFFF0000) {
-        top_hash = 0;
-    }
-    if (top_hash > bottom_hash) {
-        return top;
-    }
-
-    return bottom;
-}
-
-// This function finds the last page of a particular log file
-uint16_t DataFlash_Block::find_last_page_of_log(uint16_t log_number)
-{
-    uint16_t look;
-    uint16_t bottom;
-    uint16_t top;
-    uint32_t look_hash;
-    uint32_t check_hash;
-
-    if(check_wrapped())
-    {
-        StartRead(1);
-        bottom = GetFileNumber();
-        if (bottom > log_number)
-        {
-            bottom = find_last_page();
-            top = df_NumPages;
-        } else {
-            bottom = 1;
-            top = find_last_page();
-        }
-    } else {
-        bottom = 1;
-        top = find_last_page();
-    }
-
-    check_hash = (int32_t)log_number<<16 | 0xFFFF;
-
-    while(top-bottom > 1)
-    {
-        look = (top+bottom)/2;
-        StartRead(look);
-        look_hash = (int32_t)GetFileNumber()<<16 | GetFilePage();
-        if (look_hash >= 0xFFFF0000) look_hash = 0;
-
-        if(look_hash > check_hash) {
-            // move down
-            top = look;
-        } else {
-            // move up
-            bottom = look;
-        }
-    }
-
-    StartRead(top);
-    if (GetFileNumber() == log_number) return top;
-
-    StartRead(bottom);
-    if (GetFileNumber() == log_number) return bottom;
-
-    return 0xFFFF;
-}
 
 /*
   read and print a log entry using the format strings from the given structure
@@ -439,144 +185,6 @@ void DataFlash_Backend::_print_log_entry(uint8_t msg_type,
         }
         if (ofs < msg_len) {
             port->printf(", ");
-        }
-    }
-    port->printf("\n");
-}
-
-/*
-  print FMT specifiers for log dumps where we have wrapped in the
-  dataflash and so have no formats. This assumes the log being dumped
-  using the same log formats as the current formats, but it is better
-  than falling back to old defaults in the GCS
- */
-void DataFlash_Block::_print_log_formats(AP_HAL::BetterStream *port)
-{
-    for (uint8_t i=0; i<num_types(); i++) {
-        const struct LogStructure *s = structure(i);
-        port->printf("FMT, %u, %u, %s, %s, %s\n", s->msg_type,  s->msg_len,
-                     s->name, s->format, s->labels);
-    }
-}
-
-/*
-  Read the log and print it on port
-*/
-void DataFlash_Block::LogReadProcess(uint16_t log_num,
-                                     uint16_t start_page, uint16_t end_page,
-                                     print_mode_fn print_mode,
-                                     AP_HAL::BetterStream *port)
-{
-    uint8_t log_step = 0;
-    uint16_t page = start_page;
-    bool first_entry = true;
-
-    if (df_BufferIdx != 0) {
-        FinishWrite();
-        hal.scheduler->delay(100);
-    }
-
-    StartRead(start_page);
-
-    while (true) {
-        uint8_t data;
-        if (!ReadBlock(&data, 1)) {
-            break;
-        }
-
-        // This is a state machine to read the packets
-        switch(log_step) {
-            case 0:
-                if (data == HEAD_BYTE1) {
-                    log_step++;
-                }
-                break;
-
-            case 1:
-                if (data == HEAD_BYTE2) {
-                    log_step++;
-                } else {
-                    log_step = 0;
-                }
-                break;
-
-            case 2:
-                log_step = 0;
-                if (first_entry && data != LOG_FORMAT_MSG) {
-                    _print_log_formats(port);
-                }
-                first_entry = false;
-                _print_log_entry(data, print_mode, port);
-                break;
-        }
-        uint16_t new_page = GetPage();
-        if (new_page != page) {
-            if (new_page == end_page+1 || new_page == start_page) {
-                return;
-            }
-            page = new_page;
-        }
-    }
-}
-
-/*
-  dump header information from all log pages
- */
-void DataFlash_Block::DumpPageInfo(AP_HAL::BetterStream *port)
-{
-    for (uint16_t count=1; count<=df_NumPages; count++) {
-        StartRead(count);
-        port->printf("DF page, log file #, log page: %u,\t", (unsigned)count);
-        port->printf("%u,\t", (unsigned)GetFileNumber());
-        port->printf("%u\n", (unsigned)GetFilePage());
-    }
-}
-
-/*
-  show information about the device
- */
-void DataFlash_Block::ShowDeviceInfo(AP_HAL::BetterStream *port)
-{
-    if (!CardInserted()) {
-        port->printf("No dataflash inserted\n");
-        return;
-    }
-    ReadManufacturerID();
-    port->printf("Manufacturer: 0x%02x   Device: 0x%04x\n",
-                    (unsigned)df_manufacturer,
-                    (unsigned)df_device);
-    port->printf("NumPages: %u  PageSize: %u\n",
-                   (unsigned)df_NumPages+1,
-                   (unsigned)df_PageSize);
-}
-
-/*
-  list available log numbers
- */
-void DataFlash_Block::ListAvailableLogs(AP_HAL::BetterStream *port)
-{
-    uint16_t num_logs = get_num_logs();
-    int16_t last_log_num = find_last_log();
-    uint16_t log_start = 0;
-    uint16_t log_end = 0;
-
-    if (num_logs == 0) {
-        port->printf("\nNo logs\n\n");
-        return;
-    }
-    port->printf("\n%u logs\n", (unsigned)num_logs);
-
-    for (uint16_t i=num_logs; i>=1; i--) {
-        uint16_t last_log_start = log_start, last_log_end = log_end;
-        uint16_t temp = last_log_num - i + 1;
-        get_log_boundaries(temp, log_start, log_end);
-        port->printf("Log %u,    start %u,   end %u\n",
-                       (unsigned)temp,
-                       (unsigned)log_start,
-                       (unsigned)log_end);
-        if (last_log_start == log_start && last_log_end == log_end) {
-            // we are printing bogus logs
-            break;
         }
     }
     port->printf("\n");
@@ -1117,12 +725,16 @@ void DataFlash_Class::Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
     Vector3f dVelBias;
     Vector3f gyroBias;
     float posDownDeriv;
+    Location originLLH;
     ahrs.get_NavEKF2().getEulerAngles(0,euler);
     ahrs.get_NavEKF2().getVelNED(0,velNED);
     ahrs.get_NavEKF2().getPosNE(0,posNE);
     ahrs.get_NavEKF2().getPosD(0,posD);
     ahrs.get_NavEKF2().getGyroBias(0,gyroBias);
     posDownDeriv = ahrs.get_NavEKF2().getPosDownDerivative(0);
+    if (!ahrs.get_NavEKF2().getOriginLLH(0,originLLH)) {
+        originLLH.alt = 0;
+    }
     struct log_EKF1 pkt = {
         LOG_PACKET_HEADER_INIT(LOG_NKF1_MSG),
         time_us : time_us,
@@ -1138,7 +750,8 @@ void DataFlash_Class::Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
         posD    : (float)(posD), // metres Down
         gyrX    : (int16_t)(100*degrees(gyroBias.x)), // cd/sec, displayed as deg/sec due to format string
         gyrY    : (int16_t)(100*degrees(gyroBias.y)), // cd/sec, displayed as deg/sec due to format string
-        gyrZ    : (int16_t)(100*degrees(gyroBias.z)) // cd/sec, displayed as deg/sec due to format string
+        gyrZ    : (int16_t)(100*degrees(gyroBias.z)), // cd/sec, displayed as deg/sec due to format string
+        originHgt : originLLH.alt // WGS-84 altitude of EKF origin in cm
     };
     WriteBlock(&pkt, sizeof(pkt));
 
@@ -1279,7 +892,6 @@ void DataFlash_Class::Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
     };
     WriteBlock(&pktq1, sizeof(pktq1));
 
-    
     // log innovations for the second IMU if enabled
     if (ahrs.get_NavEKF2().activeCores() >= 2) {
         // Write 6th EKF packet
@@ -1289,6 +901,9 @@ void DataFlash_Class::Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
         ahrs.get_NavEKF2().getPosD(1,posD);
         ahrs.get_NavEKF2().getGyroBias(1,gyroBias);
         posDownDeriv = ahrs.get_NavEKF2().getPosDownDerivative(1);
+        if (!ahrs.get_NavEKF2().getOriginLLH(1,originLLH)) {
+            originLLH.alt = 0;
+        }
         struct log_EKF1 pkt6 = {
             LOG_PACKET_HEADER_INIT(LOG_NKF6_MSG),
             time_us : time_us,
@@ -1304,7 +919,8 @@ void DataFlash_Class::Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
             posD    : (float)(posD), // metres Down
             gyrX    : (int16_t)(100*degrees(gyroBias.x)), // cd/sec, displayed as deg/sec due to format string
             gyrY    : (int16_t)(100*degrees(gyroBias.y)), // cd/sec, displayed as deg/sec due to format string
-            gyrZ    : (int16_t)(100*degrees(gyroBias.z)) // cd/sec, displayed as deg/sec due to format string
+            gyrZ    : (int16_t)(100*degrees(gyroBias.z)), // cd/sec, displayed as deg/sec due to format string
+            originHgt : originLLH.alt // WGS-84 altitude of EKF origin in cm
         };
         WriteBlock(&pkt6, sizeof(pkt6));
 
@@ -1411,7 +1027,7 @@ void DataFlash_Class::Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
                     rng : (int16_t)(100*rng),
                     innov : (int16_t)(100*innov),
                     sqrtInnovVar : (uint16_t)(100*safe_sqrt(innovVar)),
-                    testRatio : (uint16_t)(100*testRatio),
+                    testRatio : (uint16_t)(100*constrain_float(testRatio,0.0f,650.0f)),
                     beaconPosN : (int16_t)(100*beaconPosNED.x),
                     beaconPosE : (int16_t)(100*beaconPosNED.y),
                     beaconPosD : (int16_t)(100*beaconPosNED.z),
@@ -1451,12 +1067,16 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
     Vector3f dVelBias;
     Vector3f gyroBias;
     float posDownDeriv;
+    Location originLLH;
     ahrs.get_NavEKF3().getEulerAngles(0,euler);
     ahrs.get_NavEKF3().getVelNED(0,velNED);
     ahrs.get_NavEKF3().getPosNE(0,posNE);
     ahrs.get_NavEKF3().getPosD(0,posD);
     ahrs.get_NavEKF3().getGyroBias(0,gyroBias);
     posDownDeriv = ahrs.get_NavEKF3().getPosDownDerivative(0);
+    if (!ahrs.get_NavEKF3().getOriginLLH(0,originLLH)) {
+        originLLH.alt = 0;
+    }
     struct log_EKF1 pkt = {
         LOG_PACKET_HEADER_INIT(LOG_XKF1_MSG),
         time_us : time_us,
@@ -1472,7 +1092,8 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
         posD    : (float)(posD), // metres Down
         gyrX    : (int16_t)(100*degrees(gyroBias.x)), // cd/sec, displayed as deg/sec due to format string
         gyrY    : (int16_t)(100*degrees(gyroBias.y)), // cd/sec, displayed as deg/sec due to format string
-        gyrZ    : (int16_t)(100*degrees(gyroBias.z)) // cd/sec, displayed as deg/sec due to format string
+        gyrZ    : (int16_t)(100*degrees(gyroBias.z)), // cd/sec, displayed as deg/sec due to format string
+        originHgt : originLLH.alt // WGS-84 altitude of EKF origin in cm
     };
     WriteBlock(&pkt, sizeof(pkt));
 
@@ -1619,6 +1240,9 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
         ahrs.get_NavEKF3().getPosD(1,posD);
         ahrs.get_NavEKF3().getGyroBias(1,gyroBias);
         posDownDeriv = ahrs.get_NavEKF3().getPosDownDerivative(1);
+        if (!ahrs.get_NavEKF3().getOriginLLH(1,originLLH)) {
+            originLLH.alt = 0;
+        }
         struct log_EKF1 pkt6 = {
             LOG_PACKET_HEADER_INIT(LOG_XKF6_MSG),
             time_us : time_us,
@@ -1634,7 +1258,8 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
             posD    : (float)(posD), // metres Down
             gyrX    : (int16_t)(100*degrees(gyroBias.x)), // cd/sec, displayed as deg/sec due to format string
             gyrY    : (int16_t)(100*degrees(gyroBias.y)), // cd/sec, displayed as deg/sec due to format string
-            gyrZ    : (int16_t)(100*degrees(gyroBias.z)) // cd/sec, displayed as deg/sec due to format string
+            gyrZ    : (int16_t)(100*degrees(gyroBias.z)), // cd/sec, displayed as deg/sec due to format string
+            originHgt : originLLH.alt // WGS-84 altitude of EKF origin in cm
         };
         WriteBlock(&pkt6, sizeof(pkt6));
 
@@ -1739,7 +1364,7 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
                 rng : (int16_t)(100*rng),
                 innov : (int16_t)(100*innov),
                 sqrtInnovVar : (uint16_t)(100*sqrtf(innovVar)),
-                testRatio : (uint16_t)(100*testRatio),
+                testRatio : (uint16_t)(100*constrain_float(testRatio,0.0f,650.0f)),
                 beaconPosN : (int16_t)(100*beaconPosNED.x),
                 beaconPosE : (int16_t)(100*beaconPosNED.y),
                 beaconPosD : (int16_t)(100*beaconPosNED.z),
@@ -1771,6 +1396,49 @@ void DataFlash_Class::Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled)
         WriteBlock(&pkt11, sizeof(pkt11));
         updateTime_ms = lastUpdateTime_ms;
     }
+
+    // log state variances every 0.49s
+    static uint32_t lastEkfStateVarLogTime_ms = 0;
+    if (AP_HAL::millis() - lastEkfStateVarLogTime_ms > 490) {
+        lastEkfStateVarLogTime_ms = AP_HAL::millis();
+        float stateVar[24];
+        ahrs.get_NavEKF3().getStateVariances(-1, stateVar);
+        struct log_ekfStateVar pktv1 = {
+            LOG_PACKET_HEADER_INIT(LOG_XKV1_MSG),
+            time_us : time_us,
+            v00 : stateVar[0],
+            v01 : stateVar[1],
+            v02 : stateVar[2],
+            v03 : stateVar[3],
+            v04 : stateVar[4],
+            v05 : stateVar[5],
+            v06 : stateVar[6],
+            v07 : stateVar[7],
+            v08 : stateVar[8],
+            v09 : stateVar[9],
+            v10 : stateVar[10],
+            v11 : stateVar[11]
+        };
+        WriteBlock(&pktv1, sizeof(pktv1));
+        struct log_ekfStateVar pktv2 = {
+            LOG_PACKET_HEADER_INIT(LOG_XKV2_MSG),
+            time_us : time_us,
+            v00 : stateVar[12],
+            v01 : stateVar[13],
+            v02 : stateVar[14],
+            v03 : stateVar[15],
+            v04 : stateVar[16],
+            v05 : stateVar[17],
+            v06 : stateVar[18],
+            v07 : stateVar[19],
+            v08 : stateVar[20],
+            v09 : stateVar[21],
+            v10 : stateVar[22],
+            v11 : stateVar[23]
+        };
+        WriteBlock(&pktv2, sizeof(pktv2));
+    }
+
 
     // log EKF timing statistics every 5s
     static uint32_t lastTimingLogTime_ms = 0;
