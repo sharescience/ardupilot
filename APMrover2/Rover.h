@@ -136,8 +136,6 @@ private:
 
     DataFlash_Class DataFlash;
 
-    bool in_log_download;
-
     // sensor drivers
     AP_GPS gps;
     AP_Baro barometer;
@@ -208,6 +206,9 @@ private:
     // current_loc uses the baro/gps solution for altitude rather than gps only.
     AP_Mount camera_mount;
 #endif
+
+    // true if initialisation has completed
+    bool initialised;
 
     // if USB is connected
     bool usb_connected;
@@ -281,7 +282,6 @@ private:
     // Ground speed
     // The amount current ground speed is below min ground speed.  meters per second
     float ground_speed;
-    int16_t throttle_last;
     int16_t throttle;
 
     // CH7 control
@@ -469,12 +469,14 @@ private:
     void Log_Arm_Disarm();
 
     void load_parameters(void);
-    void throttle_slew_limit(int16_t last_throttle);
+    void throttle_slew_limit(void);
     bool auto_check_trigger(void);
     bool use_pivot_steering(void);
     void calc_throttle(float target_speed);
     void calc_lateral_acceleration();
     void calc_nav_steer();
+    bool have_skid_steering();
+    void mix_skid_steering();
     void set_servos(void);
     void set_auto_WP(const struct Location& loc);
     void set_guided_WP(const struct Location& loc);

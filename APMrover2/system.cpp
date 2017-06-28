@@ -115,9 +115,9 @@ void Rover::init_ardupilot()
 
     ServoRelayEvents.set_channel_mask(0xFFF0);
 
-    set_control_channels();
-
     battery.init();
+
+    rssi.init();
 
     // keep a record of how many resets have happened. This can be
     // used to detect in-flight resets
@@ -165,6 +165,7 @@ void Rover::init_ardupilot()
 
     rc_override_active = hal.rcin->set_overrides(rc_override, 8);
 
+    set_control_channels();
     init_rc_in();        // sets up rc channels from radio
     init_rc_out();        // sets up the timer libs
 
@@ -216,6 +217,9 @@ void Rover::init_ardupilot()
 
     // disable safety if requested
     BoardConfig.init_safety();
+
+    // flag that initialisation has completed
+    initialised = true;
 }
 
 //*********************************************************************************
@@ -293,7 +297,6 @@ void Rover::set_mode(enum mode mode)
     }
 
     control_mode = mode;
-    throttle_last = 0;
     throttle = 500;
     if (!in_auto_reverse) {
         set_reverse(false);
@@ -368,48 +371,6 @@ bool Rover::mavlink_set_mode(uint8_t mode)
     return false;
 }
 
-/*
-  called to set/unset a failsafe event.
- */
-void Rover::failsafe_trigger(uint8_t failsafe_type, bool on)
-{
-    uint8_t old_bits = failsafe.bits;
-    if (on) {
-        failsafe.bits |= failsafe_type;
-    } else {
-        failsafe.bits &= ~failsafe_type;
-    }
-    if (old_bits == 0 && failsafe.bits != 0) {
-        // a failsafe event has started
-        failsafe.start_time = millis();
-    }
-    if (failsafe.triggered != 0 && failsafe.bits == 0) {
-        // a failsafe event has ended
-        gcs_send_text_fmt(MAV_SEVERITY_INFO, "Failsafe ended");
-    }
-
-    failsafe.triggered &= failsafe.bits;
-
-    if (failsafe.triggered == 0 &&
-        failsafe.bits != 0 &&
-        millis() - failsafe.start_time > g.fs_timeout*1000 &&
-        control_mode != RTL &&
-        control_mode != HOLD) {
-        failsafe.triggered = failsafe.bits;
-        gcs_send_text_fmt(MAV_SEVERITY_WARNING, "Failsafe trigger 0x%x", static_cast<uint32_t>(failsafe.triggered));
-        switch (g.fs_action) {
-        case 0:
-            break;
-        case 1:
-            set_mode(RTL);
-            break;
-        case 2:
-            set_mode(HOLD);
-            break;
-        }
-    }
-}
-
 void Rover::startup_INS_ground(void)
 {
     gcs_send_text(MAV_SEVERITY_INFO, "Warming up ADC");
@@ -421,6 +382,7 @@ void Rover::startup_INS_ground(void)
     mavlink_delay(1000);
 
     ahrs.init();
+    // say to EKF that rover only move by goind forward
     ahrs.set_fly_forward(true);
     ahrs.set_vehicle_class(AHRS_VEHICLE_GROUND);
 
@@ -544,9 +506,6 @@ bool Rover::should_log(uint32_t mask)
         return false;
     }
     if (!DataFlash.should_log()) {
-        return false;
-    }
-    if (in_log_download) {
         return false;
     }
     start_logging();
