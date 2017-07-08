@@ -78,7 +78,7 @@ NOINLINE void Copter::send_heartbeat(mavlink_channel_t chan)
     // indicate we have set a custom mode
     base_mode |= MAV_MODE_FLAG_CUSTOM_MODE_ENABLED;
 
-    gcs_chan[chan-MAVLINK_COMM_0].send_heartbeat(get_frame_mav_type(),
+    gcs().chan(chan-MAVLINK_COMM_0).send_heartbeat(get_frame_mav_type(),
                                             base_mode,
                                             custom_mode,
                                             system_status);
@@ -606,7 +606,7 @@ const AP_Param::GroupInfo GCS_MAVLINK::var_info[] = {
 
     // @Param: EXT_STAT
     // @DisplayName: Extended status stream rate to ground station
-    // @Description: Stream rate of SYS_STATUS, POWER_STATUS, MEMINFO, CURRENT_WAYPOINT, GPS_RAW_INT, NAV_CONTROLLER_OUTPUT, and FENCE_STATUS to ground station
+    // @Description: Stream rate of SYS_STATUS, POWER_STATUS, MEMINFO, CURRENT_WAYPOINT, GPS_RAW_INT, GPS_RTK (if available), GPS2_RAW (if available), GPS2_RTK (if available), NAV_CONTROLLER_OUTPUT, and FENCE_STATUS to ground station
     // @Units: Hz
     // @Range: 0 10
     // @Increment: 1
@@ -722,7 +722,7 @@ GCS_MAVLINK_Copter::data_stream_send(void)
         send_message(MSG_EXTENDED_STATUS1); // SYS_STATUS, POWER_STATUS
         send_message(MSG_EXTENDED_STATUS2); // MEMINFO
         send_message(MSG_CURRENT_WAYPOINT);
-        send_message(MSG_GPS_RAW);
+        send_message(MSG_GPS_RAW);          // GPS_RAW_INT, GPS_RTK (if available), GPS2_RAW (if available), GPS2_RTK (if available)
         send_message(MSG_NAV_CONTROLLER_OUTPUT);
         send_message(MSG_FENCE_STATUS);
     }
@@ -2018,7 +2018,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
 void Copter::mavlink_delay_cb()
 {
     static uint32_t last_1hz, last_50hz, last_5s;
-    if (!gcs_chan[0].initialised || in_mavlink_delay) return;
+    if (!gcs().chan(0).initialised || in_mavlink_delay) return;
 
     in_mavlink_delay = true;
     DataFlash.EnableWrites(false);
@@ -2051,11 +2051,7 @@ void Copter::mavlink_delay_cb()
  */
 void Copter::gcs_send_message(enum ap_message id)
 {
-    for (uint8_t i=0; i<num_gcs; i++) {
-        if (gcs_chan[i].initialised) {
-            gcs_chan[i].send_message(id);
-        }
-    }
+    gcs().send_message(id);
 }
 
 /*
@@ -2063,12 +2059,7 @@ void Copter::gcs_send_message(enum ap_message id)
  */
 void Copter::gcs_send_mission_item_reached_message(uint16_t mission_index)
 {
-    for (uint8_t i=0; i<num_gcs; i++) {
-        if (gcs_chan[i].initialised) {
-            gcs_chan[i].mission_item_reached_index = mission_index;
-            gcs_chan[i].send_message(MSG_MISSION_ITEM_REACHED);
-        }
-    }
+    gcs().send_mission_item_reached_message(mission_index);
 }
 
 /*
@@ -2076,11 +2067,7 @@ void Copter::gcs_send_mission_item_reached_message(uint16_t mission_index)
  */
 void Copter::gcs_data_stream_send(void)
 {
-    for (uint8_t i=0; i<num_gcs; i++) {
-        if (gcs_chan[i].initialised) {
-            gcs_chan[i].data_stream_send();
-        }
-    }
+    gcs().data_stream_send();
 }
 
 /*
@@ -2088,15 +2075,7 @@ void Copter::gcs_data_stream_send(void)
  */
 void Copter::gcs_check_input(void)
 {
-    for (uint8_t i=0; i<num_gcs; i++) {
-        if (gcs_chan[i].initialised) {
-#if CLI_ENABLED == ENABLED
-            gcs_chan[i].update(g.cli_enabled==1?FUNCTOR_BIND_MEMBER(&Copter::run_cli, void, AP_HAL::UARTDriver *):nullptr);
-#else
-            gcs_chan[i].update(nullptr);
-#endif
-        }
-    }
+    gcs().update();
 }
 
 void Copter::gcs_send_text(MAV_SEVERITY severity, const char *str)
