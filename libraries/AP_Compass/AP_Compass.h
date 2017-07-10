@@ -392,6 +392,8 @@ private:
 
     AP_Int16 _offset_max;
 
+    AP_Int8  _on_board_enable;
+
     CompassCalibrator _calibrator[COMPASS_MAX_INSTANCES];
 
     // if we want HIL only

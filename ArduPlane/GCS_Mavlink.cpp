@@ -345,7 +345,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -362,7 +364,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -379,7 +383,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -392,7 +398,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -406,7 +414,9 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
                                         pid_info->FF,
                                         pid_info->P,
                                         pid_info->I,
-                                        pid_info->D);
+                                        pid_info->D,
+										pid_info->PreD,
+										0.0f);
         }
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
@@ -655,6 +665,9 @@ bool GCS_MAVLINK_Plane::try_send_message(enum ap_message id)
         CHECK_PAYLOAD_SIZE(PID_TUNING);
         plane.send_pid_tuning(chan);
         break;
+
+    case MSG_ANGLE_TRACE:
+    	break;
 
     case MSG_VIBRATION:
         CHECK_PAYLOAD_SIZE(VIBRATION);
@@ -1061,7 +1074,8 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
             msg,
             chan,
             packet.command,
-            result);
+            result,
+			0);
 
         break;
     }
@@ -1556,7 +1570,8 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
             msg,
             chan,
             packet.command,
-            result);
+            result,
+			0);
 
         break;
     }

@@ -267,6 +267,7 @@ bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
     case MSG_GIMBAL_REPORT:
     case MSG_EKF_STATUS_REPORT:
     case MSG_PID_TUNING:
+    case MSG_ANGLE_TRACE:
     case MSG_VIBRATION:
     case MSG_RPM:
     case MSG_MISSION_ITEM_REACHED:
@@ -672,7 +673,8 @@ void GCS_MAVLINK_Tracker::handleMessage(mavlink_message_t* msg)
         mavlink_msg_command_ack_send(
             chan,
             packet.command,
-            result);
+            result,
+			0);
         
         break;
     }

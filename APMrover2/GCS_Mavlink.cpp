@@ -254,7 +254,9 @@ void Rover::send_pid_tuning(mavlink_channel_t chan)
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -267,7 +269,9 @@ void Rover::send_pid_tuning(mavlink_channel_t chan)
                                     0,
                                     pid_info->P,
                                     pid_info->I,
-                                    pid_info->D);
+                                    pid_info->D,
+									pid_info->PreD,
+									0.0f);
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -493,6 +497,7 @@ bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
     case MSG_RPM:
     case MSG_POSITION_TARGET_GLOBAL_INT:
     case MSG_LANDING:
+    case MSG_ANGLE_TRACE:
         break;  // just here to prevent a warning
     }
     return true;
@@ -792,7 +797,7 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result,0);
         break;
     }
 
@@ -1107,7 +1112,8 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
                 msg,
                 chan,
                 packet.command,
-                result);
+                result,
+				0);
 
             break;
         }

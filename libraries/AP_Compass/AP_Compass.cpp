@@ -422,6 +422,13 @@ const AP_Param::GroupInfo Compass::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("OFFS_MAX", 31, Compass, _offset_max, AP_COMPASS_OFFSETS_MAX_DEFAULT),
     
+    // @Param: BRD_CAL
+    // @DisplayName: Compass on-board calibrate enable
+    // @Description: Compass on-board calibrate enable when use GCS.
+	// @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("BRD_CAL", 32, Compass, _on_board_enable, 0),
+
     AP_GROUPEND
 };
 

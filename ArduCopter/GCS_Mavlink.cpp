@@ -279,15 +279,18 @@ void NOINLINE Copter::send_rpm(mavlink_channel_t chan)
 void Copter::send_pid_tuning(mavlink_channel_t chan)
 {
     const Vector3f &gyro = ahrs.get_gyro();
+
     if (g.gcs_pid_mask & 1) {
         const DataFlash_Class::PID_Info &pid_info = attitude_control->get_rate_roll_pid().get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_ROLL, 
-                                    pid_info.desired*0.01f,
-                                    degrees(gyro.x),
-                                    pid_info.FF*0.01f,
-                                    pid_info.P*0.01f,
-                                    pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.desired,
+                                    gyro.x,
+                                    pid_info.FF,
+                                    pid_info.P,
+                                    pid_info.I,
+                                    pid_info.D,
+									pid_info.PreD,
+									copter.motors->get_roll());
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -295,12 +298,14 @@ void Copter::send_pid_tuning(mavlink_channel_t chan)
     if (g.gcs_pid_mask & 2) {
         const DataFlash_Class::PID_Info &pid_info = attitude_control->get_rate_pitch_pid().get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_PITCH, 
-                                    pid_info.desired*0.01f,
-                                    degrees(gyro.y),
-                                    pid_info.FF*0.01f,
-                                    pid_info.P*0.01f,
-                                    pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.desired,
+                                    gyro.y,
+                                    pid_info.FF,
+                                    pid_info.P,
+                                    pid_info.I,
+                                    pid_info.D,
+									pid_info.PreD,
+									copter.motors->get_pitch());
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -308,12 +313,14 @@ void Copter::send_pid_tuning(mavlink_channel_t chan)
     if (g.gcs_pid_mask & 4) {
         const DataFlash_Class::PID_Info &pid_info = attitude_control->get_rate_yaw_pid().get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_YAW, 
-                                    pid_info.desired*0.01f,
-                                    degrees(gyro.z),
-                                    pid_info.FF*0.01f,
-                                    pid_info.P*0.01f,
-                                    pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.desired,
+                                    gyro.z,
+                                    pid_info.FF,
+                                    pid_info.P,
+                                    pid_info.I,
+                                    pid_info.D,
+									pid_info.PreD,
+									copter.motors->get_yaw());
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
@@ -321,18 +328,52 @@ void Copter::send_pid_tuning(mavlink_channel_t chan)
     if (g.gcs_pid_mask & 8) {
         const DataFlash_Class::PID_Info &pid_info = g.pid_accel_z.get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_ACCZ, 
-                                    pid_info.desired*0.01f,
+                                    pid_info.desired,
                                     -(ahrs.get_accel_ef_blended().z + GRAVITY_MSS),
-                                    pid_info.FF*0.01f,
-                                    pid_info.P*0.01f,
-                                    pid_info.I*0.01f,
-                                    pid_info.D*0.01f);
+                                    pid_info.FF,
+                                    pid_info.P,
+                                    pid_info.I,
+                                    pid_info.D,
+									pid_info.PreD,
+									copter.motors->get_throttle());
         if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
             return;
         }
     }
 }
 
+void Copter::send_angle_trace(mavlink_channel_t chan)
+{
+    const Vector3f &target_angle = attitude_control->get_att_target_euler_rad();
+    const float& roll_sensor = ahrs.roll;
+    const float& pitch_sensor = ahrs.pitch;
+    const float& yaw_sensor = ahrs.yaw;
+
+    if (g.gcs_pid_mask & 1) {
+        mavlink_msg_angle_trace_send(chan,
+        		                     target_angle.x,
+									 roll_sensor);
+        if (!HAVE_PAYLOAD_SPACE(chan, ANGLE_TRACE)) {
+            return;
+        }
+    }
+    if (g.gcs_pid_mask & 2) {
+        mavlink_msg_angle_trace_send(chan,
+        		                     target_angle.y,
+									 pitch_sensor);
+        if (!HAVE_PAYLOAD_SPACE(chan, ANGLE_TRACE)) {
+            return;
+        }
+    }
+    if (g.gcs_pid_mask & 4) {
+        mavlink_msg_angle_trace_send(chan,
+        		                     target_angle.z,
+									 yaw_sensor);
+        if (!HAVE_PAYLOAD_SPACE(chan, ANGLE_TRACE)) {
+            return;
+        }
+    }
+}
 uint32_t GCS_MAVLINK_Copter::telem_delay() const
 {
     return (uint32_t)(copter.g.telem_delay);
@@ -560,6 +601,11 @@ bool GCS_MAVLINK_Copter::try_send_message(enum ap_message id)
         copter.send_pid_tuning(chan);
         break;
 
+    case MSG_ANGLE_TRACE:
+    	CHECK_PAYLOAD_SIZE(ANGLE_TRACE);
+    	copter.send_angle_trace(chan);
+    	break;
+
     case MSG_VIBRATION:
         CHECK_PAYLOAD_SIZE(VIBRATION);
         send_vibration(copter.ins);
@@ -684,6 +730,15 @@ const AP_Param::GroupInfo GCS_MAVLINK::var_info[] = {
     // @Increment: 1
     // @User: Advanced
     AP_GROUPINFO("ADSB",   9, GCS_MAVLINK, streamRates[9],  5),
+
+    // @Param: PID
+    // @DisplayName: PID stream rate
+    // @Description: PID stream rate to ground station
+    // @Units: Hz
+    // @Range: 0 10
+    // @Increment: 1
+    // @User: Advanced
+    AP_GROUPINFO("PID",   10, GCS_MAVLINK, streamRates[10],  0),
 AP_GROUPEND
 };
 
@@ -788,6 +843,13 @@ GCS_MAVLINK_Copter::data_stream_send(void)
     if (stream_trigger(STREAM_ADSB)) {
         send_message(MSG_ADSB_VEHICLE);
     }
+
+    if (copter.gcs_out_of_time) return;
+
+    if (stream_trigger(STREAM_PID)) {
+    	send_message(MSG_ANGLE_TRACE);
+        send_message(MSG_PID_TUNING);
+    }
 }
 
 
@@ -819,6 +881,7 @@ void GCS_MAVLINK_Copter::packetReceived(const mavlink_status_t &status,
 void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
 {
     uint8_t result = MAV_RESULT_FAILED;         // assume failure.  Each messages id is responsible for return ACK or NAK if required
+    uint8_t progress = 0;
 
     switch (msg->msgid) {
 
@@ -838,7 +901,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
             handle_set_mode(msg, FUNCTOR_BIND(&copter, &Copter::gcs_set_mode, bool, uint8_t));
         } else {
             // don't allow mode changes while in radio failsafe
-            mavlink_msg_command_ack_send_buf(msg, chan, MAVLINK_MSG_ID_SET_MODE, MAV_RESULT_FAILED);
+            mavlink_msg_command_ack_send_buf(msg, chan, MAVLINK_MSG_ID_SET_MODE, MAV_RESULT_FAILED, progress);
         }
 #else
         handle_set_mode(msg, FUNCTOR_BIND(&copter, &Copter::gcs_set_mode, bool, uint8_t));
@@ -1056,7 +1119,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, progress);
         break;
     }
 
@@ -1554,7 +1617,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, progress);
 
         break;
     }
