@@ -321,6 +321,8 @@ uint8_t Compass::handle_mag_cal_command(const mavlink_command_long_t &packet)
     }
         
     case MAV_CMD_DO_CANCEL_MAG_CAL: {
+    	if(_on_board_enable.get() != 1) break;
+
         result = MAV_RESULT_ACCEPTED;
         if(packet.param1 < 0 || packet.param1 > 255) {
             result = MAV_RESULT_FAILED;
