@@ -1,5 +1,5 @@
 #include "Copter.h"
-#if USE_EVENT_MANAGER == DISABLED
+#if USE_EVENT_MANAGER == ENABLED
 // set_home_state - update home state
 void Copter::set_home_state(enum HomeState new_home_state)
 {
@@ -79,11 +79,11 @@ void Copter::set_failsafe_radio(bool b)
         if (failsafe.radio == false) {
             // We've regained radio contact
             // ----------------------------
-            failsafe_radio_off_event();
+        	event_manager.event_update(EM_FAILSAFE_RADIO, EM_EVENT_OFF);
         }else{
             // We've lost radio contact
             // ------------------------
-            failsafe_radio_on_event();
+        	event_manager.event_update(EM_FAILSAFE_RADIO, EM_EVENT_ON);
         }
 
         // update AP_Notify
@@ -95,14 +95,31 @@ void Copter::set_failsafe_radio(bool b)
 // ---------------------------------------------
 void Copter::set_failsafe_battery(bool b)
 {
-    failsafe.battery = b;
-    AP_Notify::flags.failsafe_battery = b;
+	if(failsafe.battery != b){
+        failsafe.battery = b;
+
+        if(failsafe.battery == false){
+        	event_manager.event_update(EM_FAILSAFE_BATTERY, EM_EVENT_OFF);
+        }else{
+        	event_manager.event_update(EM_FAILSAFE_BATTERY, EM_EVENT_ON);
+        }
+
+        AP_Notify::flags.failsafe_battery = b;
+	}
 }
 
 // ---------------------------------------------
 void Copter::set_failsafe_gcs(bool b)
 {
-    failsafe.gcs = b;
+	if(failsafe.gcs != b){
+		failsafe.gcs = b;
+
+        if(failsafe.gcs == false){
+        	event_manager.event_update(EM_FAILSAFE_GCS, EM_EVENT_OFF);
+        }else{
+        	event_manager.event_update(EM_FAILSAFE_GCS, EM_EVENT_ON);
+        }
+	}
 }
 
 // ---------------------------------------------
@@ -132,5 +149,5 @@ void Copter::set_motor_emergency_stop(bool b)
         Log_Write_Event(DATA_MOTORS_EMERGENCY_STOP_CLEARED);
     }
 }
-#endif //#if USE_EVENT_MANAGER == DISABLED
+#endif //#if USE_EVENT_MANAGER == ENABLED
 

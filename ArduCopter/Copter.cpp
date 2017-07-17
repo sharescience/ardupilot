@@ -97,6 +97,12 @@ Copter::Copter(void) :
 #if PRECISION_LANDING == ENABLED
     precland(ahrs, inertial_nav),
 #endif
+#if USE_EVENT_MANAGER == ENABLED
+    event_manager(FUNCTOR_BIND_MEMBER(&Copter::event_on_response, void),
+    		      FUNCTOR_BIND_MEMBER(&Copter::write_event_on_log, void, const uint8_t &),
+    		      FUNCTOR_BIND_MEMBER(&Copter::write_event_off_log, void, const uint8_t &),
+				  &gps),
+#endif
 #if FRAME_CONFIG == HELI_FRAME
     // ToDo: Input Manager is only used by Heli for 3.3, but will be used by all frames for 3.4
     input_manager(MAIN_LOOP_RATE),

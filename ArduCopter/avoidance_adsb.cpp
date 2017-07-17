@@ -17,6 +17,10 @@ MAV_COLLISION_ACTION AP_Avoidance_Copter::handle_avoidance(const AP_Avoidance::O
     // check for changes in failsafe
     if (!copter.failsafe.adsb) {
         copter.failsafe.adsb = true;
+#if USE_EVENT_MANAGER == ENABLED
+        copter.event_manager.set_event_method_on(EM_FAILSAFE_ADSB, EM_EVENT_ON_DISABLE);
+        copter.event_manager.event_update(EM_FAILSAFE_ADSB, EM_EVENT_ON);
+#endif
         failsafe_state_change = true;
         // record flight mode in case it's required for the recovery
         prev_control_mode = copter.control_mode;
@@ -99,6 +103,9 @@ void AP_Avoidance_Copter::handle_recovery(uint8_t recovery_action)
     // check we are coming out of failsafe
     if (copter.failsafe.adsb) {
         copter.failsafe.adsb = false;
+#if USE_EVENT_MANAGER == ENABLED
+        copter.event_manager.event_update(EM_FAILSAFE_ADSB, EM_EVENT_OFF);
+#endif
         copter.Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_ADSB, ERROR_CODE_ERROR_RESOLVED);
 
         // restore flight mode if requested and user has not changed mode since

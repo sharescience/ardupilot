@@ -198,6 +198,11 @@ public:
         k_param_pos_control,
         k_param_circle_nav,     // 104
 
+		//
+		// 105: AP_EventManager Library
+		//
+		k_param_event_manager = 105,
+
         // 110: Telemetry control
         //
         k_param_gcs0 = 110,

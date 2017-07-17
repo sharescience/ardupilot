@@ -744,6 +744,12 @@ const AP_Param::Info Copter::var_info[] = {
     GOBJECT(BoardConfig_CAN,        "CAN_",       AP_BoardConfig_CAN),
 #endif
 
+#if USE_EVENT_MANAGER == ENABLED
+    // @Group: EM_
+    // @Path: ../libraries/AP_EventManager/AP_EventManager.cpp
+    GOBJECT(event_manager, "EM_",  AP_EventManager),
+#endif
+
 #if SPRAYER == ENABLED
     // @Group: SPRAY_
     // @Path: ../libraries/AC_Sprayer/AC_Sprayer.cpp
