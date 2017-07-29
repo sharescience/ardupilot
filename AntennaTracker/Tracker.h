@@ -204,7 +204,6 @@ private:
     void send_nav_controller_output(mavlink_channel_t chan);
     void send_simstate(mavlink_channel_t chan);
     void mavlink_check_target(const mavlink_message_t* msg);
-    void gcs_send_message(enum ap_message id);
     void gcs_data_stream_send(void);
     void gcs_update(void);
     void gcs_retry_deferred(void);
@@ -261,7 +260,6 @@ private:
     void Log_Write_Vehicle_Pos(int32_t lat,int32_t lng,int32_t alt, const Vector3f& vel);
     void Log_Write_Vehicle_Baro(float pressure, float altitude);
     void Log_Write_Vehicle_Startup_Messages();
-    void start_logging();
     void log_init(void);
     bool should_log(uint32_t mask);
 

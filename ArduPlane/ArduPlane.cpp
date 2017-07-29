@@ -223,13 +223,7 @@ void Plane::update_mount(void)
 void Plane::update_trigger(void)
 {
 #if CAMERA == ENABLED
-    camera.trigger_pic_cleanup();
-    if (camera.check_trigger_pin()) {
-        gcs_send_message(MSG_CAMERA_FEEDBACK);
-        if (should_log(MASK_LOG_CAMERA)) {
-            DataFlash.Log_Write_Camera(ahrs, gps, current_loc);
-        }
-    }    
+    camera.update_trigger();
 #endif
 }
 
@@ -323,7 +317,7 @@ void Plane::update_aux(void)
 void Plane::one_second_loop()
 {
     // send a heartbeat
-    gcs_send_message(MSG_HEARTBEAT);
+    gcs().send_message(MSG_HEARTBEAT);
 
     // make it possible to change control channel ordering at runtime
     set_control_channels();
@@ -514,10 +508,8 @@ void Plane::update_GPS_10Hz(void)
         geofence_check(false);
 
 #if CAMERA == ENABLED
-        if (camera.update_location(current_loc, plane.ahrs ) == true) {
-            do_take_picture();
-        }
-#endif        
+        camera.update();
+#endif
 
         // update wind estimate
         ahrs.estimate_wind();
@@ -540,7 +532,7 @@ void Plane::handle_auto_mode(void)
         // this could happen if AP_Landing::restart_landing_sequence() returns false which would only happen if:
         // restart_landing_sequence() is called when not executing a NAV_LAND or there is no previous nav point
         set_mode(RTL, MODE_REASON_MISSION_END);
-        GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_INFO, "Aircraft in auto without a running mission");
+        gcs().send_text(MAV_SEVERITY_INFO, "Aircraft in auto without a running mission");
         return;
     }
 
@@ -955,11 +947,11 @@ void Plane::update_flight_stage(void)
             } else if (auto_state.takeoff_complete == false) {
                 set_flight_stage(AP_Vehicle::FixedWing::FLIGHT_TAKEOFF);
             } else if (mission.get_current_nav_cmd().id == MAV_CMD_NAV_LAND) {
-
                 if (landing.is_commanded_go_around() || flight_stage == AP_Vehicle::FixedWing::FLIGHT_ABORT_LAND) {
                     // abort mode is sticky, it must complete while executing NAV_LAND
                     set_flight_stage(AP_Vehicle::FixedWing::FLIGHT_ABORT_LAND);
-                } else if (landing.get_abort_throttle_enable() && channel_throttle->get_control_in() >= 90) {
+                } else if (landing.get_abort_throttle_enable() && channel_throttle->get_control_in() >= 90 &&
+                           landing.request_go_around()) {
                     gcs().send_text(MAV_SEVERITY_INFO,"Landing aborted via throttle");
                     set_flight_stage(AP_Vehicle::FixedWing::FLIGHT_ABORT_LAND);
                 } else {

@@ -273,7 +273,7 @@ private:
 
     // Camera
 #if CAMERA == ENABLED
-    AP_Camera camera {&relay};
+    AP_Camera camera{&relay, MASK_LOG_CAMERA, current_loc, gps, ahrs};
 #endif
 
 #if OPTFLOW == ENABLED
@@ -735,7 +735,7 @@ private:
         // Timer used to accrue data and trigger recording of the performanc monitoring log message
         uint32_t start_ms;
 
-        // The maximum and minimum main loop execution time recorded in the current performance monitoring interval
+        // The maximum and minimum main loop execution time, in microseconds, recorded in the current performance monitoring interval
         uint32_t G_Dt_max;
         uint32_t G_Dt_min;
 
@@ -821,9 +821,6 @@ private:
 
     void send_aoa_ssa(mavlink_channel_t chan);
 
-    bool telemetry_delayed(mavlink_channel_t chan);
-    void gcs_send_message(enum ap_message id);
-    void gcs_send_mission_item_reached_message(uint16_t mission_index);
     void gcs_data_stream_send(void);
     void gcs_update(void);
     void gcs_send_airspeed_calibration(const Vector3f &vg);
@@ -850,7 +847,6 @@ private:
     void Log_Write_Vehicle_Startup_Messages();
     void Log_Write_AOA_SSA();
     void Log_Read(uint16_t log_num, int16_t start_page, int16_t end_page);
-    void start_logging();
 
     void load_parameters(void);
     void adjust_altitude_target();
@@ -895,9 +891,7 @@ private:
     bool verify_vtol_takeoff(const AP_Mission::Mission_Command &cmd);
     bool verify_vtol_land(const AP_Mission::Mission_Command &cmd);
     void do_loiter_at_location();
-    void do_take_picture();
     bool verify_loiter_heading(bool init);
-    void log_picture();
     void exit_mission_callback();
     void mavlink_delay(uint32_t ms);
     void read_control_switch();

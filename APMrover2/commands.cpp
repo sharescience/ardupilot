@@ -29,7 +29,7 @@ void Rover::set_auto_WP(const struct Location& loc)
 
 void Rover::set_guided_WP(const struct Location& loc)
 {
-    guided_mode = Guided_WP;
+    rover.mode_guided.guided_mode = ModeGuided::Guided_WP;
     // copy the current location into the OldWP slot
     // ---------------------------------------
     prev_WP = current_loc;
@@ -47,12 +47,11 @@ void Rover::set_guided_WP(const struct Location& loc)
 
 void Rover::set_guided_velocity(float target_steer_speed, float target_speed)
 {
-    guided_mode = Guided_Velocity;
+    rover.mode_guided.guided_mode = ModeGuided::Guided_Velocity;
     rover.guided_control.target_steer_speed = target_steer_speed;
     rover.guided_control.target_speed = target_speed;
 
     next_WP = current_loc;
-    lateral_acceleration = 0.0f;
     // this is handy for the groundstation
     wp_totalDistance = 0;
     wp_distance      = 0.0f;
@@ -136,7 +135,7 @@ bool Rover::set_home(const Location& loc, bool lock)
     Log_Write_Home_And_Origin();
 
     // send new home location to GCS
-    GCS_MAVLINK::send_home_all(loc);
+    gcs().send_home(loc);
 
     // send text of home position to ground stations
     gcs().send_text(MAV_SEVERITY_INFO, "Set HOME to %.6f %.6f at %.2fm",
@@ -190,7 +189,7 @@ void Rover::update_home()
             if (get_distance(loc, ahrs.get_home()) > DISTANCE_HOME_MAX) {
                 ahrs.set_home(loc);
                 Log_Write_Home_And_Origin();
-                GCS_MAVLINK::send_home_all(gps.location());
+                gcs().send_home(gps.location());
             }
         }
     }
