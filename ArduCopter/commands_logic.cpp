@@ -182,7 +182,7 @@ bool Copter::verify_command_callback(const AP_Mission::Mission_Command& cmd)
 
         // send message to GCS
         if (cmd_complete) {
-            gcs_send_mission_item_reached_message(cmd.index);
+            gcs().send_mission_item_reached_message(cmd.index);
         }
 
         return cmd_complete;
@@ -1014,7 +1014,7 @@ void Copter::do_yaw(const AP_Mission::Mission_Command& cmd)
 		cmd.content.yaw.angle_deg,
 		cmd.content.yaw.turn_rate_dps,
 		cmd.content.yaw.direction,
-		cmd.content.yaw.relative_angle);
+		cmd.content.yaw.relative_angle > 0);
 }
 
 
@@ -1134,36 +1134,12 @@ void Copter::do_digicam_configure(const AP_Mission::Mission_Command& cmd)
 // do_digicam_control Send Digicam Control message with the camera library
 void Copter::do_digicam_control(const AP_Mission::Mission_Command& cmd)
 {
-    if (camera.control(cmd.content.digicam_control.session,
-                       cmd.content.digicam_control.zoom_pos,
-                       cmd.content.digicam_control.zoom_step,
-                       cmd.content.digicam_control.focus_lock,
-                       cmd.content.digicam_control.shooting_cmd,
-                       cmd.content.digicam_control.cmd_id)) {
-        log_picture();
-    }
-}
-
-// do_take_picture - take a picture with the camera library
-void Copter::do_take_picture()
-{
-    camera.trigger_pic(true);
-    log_picture();
-}
-
-// log_picture - log picture taken and send feedback to GCS
-void Copter::log_picture()
-{
-    if (!camera.using_feedback_pin()) {
-        gcs_send_message(MSG_CAMERA_FEEDBACK);
-        if (should_log(MASK_LOG_CAMERA)) {
-            DataFlash.Log_Write_Camera(ahrs, gps, current_loc);
-        }
-    } else {
-        if (should_log(MASK_LOG_CAMERA)) {
-            DataFlash.Log_Write_Trigger(ahrs, gps, current_loc);
-        }      
-    }
+    camera.control(cmd.content.digicam_control.session,
+                   cmd.content.digicam_control.zoom_pos,
+                   cmd.content.digicam_control.zoom_step,
+                   cmd.content.digicam_control.focus_lock,
+                   cmd.content.digicam_control.shooting_cmd,
+                   cmd.content.digicam_control.cmd_id);
 }
 
 #endif

@@ -18,6 +18,7 @@ enum autopilot_yaw_mode {
     AUTO_YAW_LOOK_AT_HEADING =  3,  // point towards a particular angle (not pilot input accepted)
     AUTO_YAW_LOOK_AHEAD =       4,  // point in the direction the copter is moving
     AUTO_YAW_RESETTOARMEDYAW =  5,  // point towards heading at time motors were armed
+    AUTO_YAW_RATE =             6,  // turn at a specified rate (held in auto_yaw_rate)
 };
 
 // Ch6... Ch12 aux switch control
@@ -317,7 +318,6 @@ enum DevOptions {
 #define LOG_PRECLAND_MSG                0x21
 #define LOG_GUIDEDTARGET_MSG            0x22
 #define LOG_THROW_MSG                   0x23
-#define LOG_PROXIMITY_MSG               0x24
 
 #define MASK_LOG_ATTITUDE_FAST          (1<<0)
 #define MASK_LOG_ATTITUDE_MED           (1<<1)
@@ -408,7 +408,7 @@ enum DevOptions {
 #define ERROR_SUBSYSTEM_FAILSAFE_GCS        8
 #define ERROR_SUBSYSTEM_FAILSAFE_FENCE      9
 #define ERROR_SUBSYSTEM_FLIGHT_MODE         10
-#define ERROR_SUBSYSTEM_GPS                 11  // not used
+#define ERROR_SUBSYSTEM_GPS                 11
 #define ERROR_SUBSYSTEM_CRASH_CHECK         12
 #define ERROR_SUBSYSTEM_FLIP                13
 #define ERROR_SUBSYSTEM_AUTOTUNE            14
@@ -456,6 +456,8 @@ enum DevOptions {
 #define ERROR_CODE_EKFCHECK_VARIANCE_CLEARED   0
 // Baro specific error codes
 #define ERROR_CODE_BARO_GLITCH              2
+// GPS specific error coces
+#define ERROR_CODE_GPS_GLITCH               2
 
 // Radio failsafe definitions (FS_THR parameter)
 #define FS_THR_DISABLED                    0

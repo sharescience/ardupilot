@@ -493,8 +493,6 @@ private:
 #endif
     void send_temperature(mavlink_channel_t chan);
     void send_pid_tuning(mavlink_channel_t chan);
-    void gcs_send_message(enum ap_message id);
-    void gcs_send_mission_item_reached_message(uint16_t mission_index);
     void gcs_data_stream_send(void);
     void gcs_check_input(void);
     void do_erase_logs(void);
@@ -517,7 +515,6 @@ private:
     void Log_Sensor_Health();
     void Log_Write_GuidedTarget(uint8_t target_type, const Vector3f& pos_target, const Vector3f& vel_target);
     void Log_Write_Vehicle_Startup_Messages();
-    void start_logging() ;
     void load_parameters(void);
     void userhook_init();
     void userhook_FastLoop();
@@ -692,8 +689,6 @@ private:
 #if CAMERA == ENABLED
     void do_digicam_configure(const AP_Mission::Mission_Command& cmd);
     void do_digicam_control(const AP_Mission::Mission_Command& cmd);
-    void do_take_picture();
-    void log_picture();
     void update_trigger();
 #endif
 

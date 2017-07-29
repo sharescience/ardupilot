@@ -905,7 +905,7 @@ void Plane::do_set_home(const AP_Mission::Mission_Command& cmd)
         ahrs.set_home(cmd.content.location);
         home_is_set = HOME_SET_NOT_LOCKED;
         Log_Write_Home_And_Origin();
-        GCS_MAVLINK::send_home_all(cmd.content.location);
+        gcs().send_home(cmd.content.location);
     }
 }
 
@@ -927,23 +927,12 @@ void Plane::do_digicam_configure(const AP_Mission::Mission_Command& cmd)
 void Plane::do_digicam_control(const AP_Mission::Mission_Command& cmd)
 {
 #if CAMERA == ENABLED
-    if (camera.control(cmd.content.digicam_control.session,
-                       cmd.content.digicam_control.zoom_pos,
-                       cmd.content.digicam_control.zoom_step,
-                       cmd.content.digicam_control.focus_lock,
-                       cmd.content.digicam_control.shooting_cmd,
-                       cmd.content.digicam_control.cmd_id)) {
-        log_picture();
-    }
-#endif
-}
-
-// do_take_picture - take a picture with the camera library
-void Plane::do_take_picture()
-{
-#if CAMERA == ENABLED
-    camera.trigger_pic(true);
-    log_picture();
+    camera.control(cmd.content.digicam_control.session,
+                   cmd.content.digicam_control.zoom_pos,
+                   cmd.content.digicam_control.zoom_step,
+                   cmd.content.digicam_control.focus_lock,
+                   cmd.content.digicam_control.shooting_cmd,
+                   cmd.content.digicam_control.cmd_id);
 #endif
 }
 
@@ -968,23 +957,6 @@ void Plane::do_parachute(const AP_Mission::Mission_Command& cmd)
 }
 #endif
 
-// log_picture - log picture taken and send feedback to GCS
-void Plane::log_picture()
-{
-#if CAMERA == ENABLED
-    if (!camera.using_feedback_pin()) {
-        gcs_send_message(MSG_CAMERA_FEEDBACK);
-        if (should_log(MASK_LOG_CAMERA)) {
-            DataFlash.Log_Write_Camera(ahrs, gps, current_loc);
-        }
-    } else {
-        if (should_log(MASK_LOG_CAMERA)) {
-            DataFlash.Log_Write_Trigger(ahrs, gps, current_loc);
-        }      
-    }
-#endif
-}
-
 // start_command_callback - callback function called from ap-mission when it begins a new mission command
 //      we double check that the flight mode is AUTO to avoid the possibility of ap-mission triggering actions while we're not in AUTO mode
 bool Plane::start_command_callback(const AP_Mission::Mission_Command &cmd)
@@ -1004,7 +976,7 @@ bool Plane::verify_command_callback(const AP_Mission::Mission_Command& cmd)
 
         // send message to GCS
         if (cmd_complete) {
-            gcs_send_mission_item_reached_message(cmd.index);
+            gcs().send_mission_item_reached_message(cmd.index);
         }
 
         return cmd_complete;
