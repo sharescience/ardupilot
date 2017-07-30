@@ -254,17 +254,3 @@ void AP_EventManager::find_should_be_responded_id(int16_t id)
 		}
 	}
 }
-
-//void AP_EventManager::send_mavlink_event_status(mavlink_channel_t chan)
-//{
-//	mavlink_msg_event_status_send(
-//	chan,
-//	_bits[0],
-//	_bits[1],
-//	_bits[2],
-//	_bits[3],
-//	_bits[4],
-//	_bits[5],
-//	_bits[6],
-//	_bits[7]);
-//}
