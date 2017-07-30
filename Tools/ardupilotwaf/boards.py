@@ -490,6 +490,7 @@ class px4(Board):
             CONFIG_HAL_BOARD = 'HAL_BOARD_PX4',
             HAVE_OCLOEXEC = 0,
             HAVE_STD_NULLPTR_T = 0,
+            USE_EVENT_MANAGER = 1,
         )
         env.CXXFLAGS += [
             '-Wlogical-op',

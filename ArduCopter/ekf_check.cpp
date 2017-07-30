@@ -142,7 +142,10 @@ void Copter::failsafe_ekf_event()
     // EKF failsafe event has occurred
     failsafe.ekf = true;
     Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_EKFINAV, ERROR_CODE_FAILSAFE_OCCURRED);
-
+#if USE_EVENT_MANAGER == ENABLED
+    event_manager.event_update(EM_FAILSAFE_EKF, EM_EVENT_ON);
+#endif
+#if USE_EVENT_MANAGER == DISABLED
     // take action based on fs_ekf_action parameter
     switch (g.fs_ekf_action) {
         case FS_EKF_ACTION_ALTHOLD:
@@ -160,6 +163,7 @@ void Copter::failsafe_ekf_event()
     if (control_mode == LAND) {
         land_do_not_use_GPS();
     }
+#endif
 }
 
 // failsafe_ekf_off_event - actions to take when EKF failsafe is cleared
@@ -173,6 +177,9 @@ void Copter::failsafe_ekf_off_event(void)
     // clear flag and log recovery
     failsafe.ekf = false;
     Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_EKFINAV, ERROR_CODE_FAILSAFE_RESOLVED);
+#if USE_EVENT_MANAGER == ENABLED
+    event_manager.event_update(EM_FAILSAFE_EKF, EM_EVENT_OFF);
+#endif
 }
 
 // check for ekf yaw reset and adjust target heading, also log position reset

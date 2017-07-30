@@ -227,7 +227,6 @@ void NOINLINE Copter::send_rpm(mavlink_channel_t chan)
 void Copter::send_pid_tuning(mavlink_channel_t chan)
 {
     const Vector3f &gyro = ahrs.get_gyro();
-
     if (g.gcs_pid_mask & 1) {
         const DataFlash_Class::PID_Info &pid_info = attitude_control->get_rate_roll_pid().get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_ROLL, 

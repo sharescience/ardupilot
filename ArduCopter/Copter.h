@@ -96,6 +96,7 @@
 
 // Configuration
 #include "defines.h"
+#include "defines2.h"
 #include "config.h"
 
 #include "GCS_Mavlink.h"
@@ -119,6 +120,9 @@
 #endif
 #if FRSKY_TELEM_ENABLED == ENABLED
 #include <AP_Frsky_Telem/AP_Frsky_Telem.h>
+#endif
+#if USE_EVENT_MANAGER == ENABLED
+#include <AP_EventManager/AP_EventManager.h>
 #endif
 
 #if ADVANCED_FAILSAFE == ENABLED
@@ -583,6 +587,11 @@ private:
     // Precision Landing
 #if PRECISION_LANDING == ENABLED
     AC_PrecLand precland;
+#endif
+
+    // Event Manager
+#if USE_EVENT_MANAGER == ENABLED
+    AP_EventManager event_manager;
 #endif
 
     // Pilot Input Management Library
@@ -1158,6 +1167,14 @@ private:
     void init_capabilities(void);
     void dataflash_periodic(void);
     void accel_cal_update(void);
+
+#if USE_EVENT_MANAGER == ENABLED
+    void event_response_update(void);
+    mode_reason_t get_event_set_mode_reason();
+    void event_on_response();
+    void write_event_on_log(const uint8_t& id);
+    void write_event_off_log(const uint8_t& id);
+#endif
 
 public:
     void mavlink_delay_cb();
