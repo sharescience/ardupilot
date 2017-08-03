@@ -233,7 +233,7 @@ NOINLINE void Sub::send_extended_status1(mavlink_channel_t chan)
         control_sensors_present,
         control_sensors_enabled,
         control_sensors_health,
-        (uint16_t)(scheduler.load_average(MAIN_LOOP_MICROS) * 1000),
+        (uint16_t)(scheduler.load_average() * 1000),
         battery.voltage() * 1000, // mV
         battery_current,        // in 10mA units
         battery_remaining,      // in %
@@ -1247,7 +1247,7 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
 
                 result = MAV_RESULT_ACCEPTED;
                 // send ack before we reboot
-                mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result);
+                mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0);
 
                 AP_Notify::flags.firmware_update = 1;
                 sub.update_notify();
