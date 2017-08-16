@@ -28,7 +28,6 @@ Rover::Rover(void) :
     modes(&g.mode1),
     L1_controller(ahrs, nullptr),
     nav_controller(&L1_controller),
-    steerController(ahrs),
     mission(ahrs,
             FUNCTOR_BIND_MEMBER(&Rover::start_command, bool, const AP_Mission::Mission_Command&),
             FUNCTOR_BIND_MEMBER(&Rover::verify_command_callback, bool, const AP_Mission::Mission_Command&),
@@ -41,11 +40,9 @@ Rover::Rover(void) :
     camera_mount(ahrs, current_loc),
 #endif
     control_mode(&mode_initializing),
-    throttle(500),
 #if FRSKY_TELEM_ENABLED == ENABLED
     frsky_telemetry(ahrs, battery, rangefinder),
 #endif
-    do_auto_rotation(false),
     home(ahrs.get_home()),
     G_Dt(0.02f)
 {

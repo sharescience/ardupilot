@@ -199,8 +199,6 @@ private:
     void send_heartbeat(mavlink_channel_t chan);
     void send_attitude(mavlink_channel_t chan);
     void send_location(mavlink_channel_t chan);
-    void send_hwstatus(mavlink_channel_t chan);
-    void send_waypoint_request(mavlink_channel_t chan);
     void send_nav_controller_output(mavlink_channel_t chan);
     void send_simstate(mavlink_channel_t chan);
     void mavlink_check_target(const mavlink_message_t* msg);
@@ -267,8 +265,6 @@ public:
     void mavlink_snoop(const mavlink_message_t* msg);
     void mavlink_delay_cb();
 };
-
-#define MENU_FUNC(func) FUNCTOR_BIND(&tracker, &Tracker::func, int8_t, uint8_t, const Menu::arg *)
 
 extern const AP_HAL::HAL& hal;
 extern Tracker tracker;

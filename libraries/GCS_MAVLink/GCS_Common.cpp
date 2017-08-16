@@ -18,6 +18,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <AP_OpticalFlow/AP_OpticalFlow.h>
 #include <AP_Vehicle/AP_Vehicle.h>
+#include <AP_RangeFinder/RangeFinder_Backend.h>
 
 #include "ap_version.h"
 #include "GCS.h"
@@ -59,7 +60,6 @@ GCS_MAVLINK::init(AP_HAL::UARTDriver *port, mavlink_channel_t mav_chan)
     mavlink_comm_port[chan] = _port;
     initialised = true;
     _queued_parameter = nullptr;
-    reset_cli_timeout();
 
     if (!_perf_packet) {
         _perf_packet = hal.util->perf_alloc(AP_HAL::Util::PC_ELAPSED, "GCS_Packet");
@@ -169,10 +169,6 @@ GCS_MAVLINK::queued_waypoint_send()
     }
 }
 
-void GCS_MAVLINK::reset_cli_timeout() {
-    _cli_timeout = AP_HAL::millis();
-}
-
 void GCS_MAVLINK::send_meminfo(void)
 {
     unsigned __brkval = 0;
@@ -219,54 +215,60 @@ bool GCS_MAVLINK::send_battery_status(const AP_BattMonitor &battery) const
     return true;
 }
 
-void GCS_MAVLINK::send_distance_sensor(const RangeFinder &rangefinder, const uint8_t instance) const
+void GCS_MAVLINK::send_distance_sensor(const AP_RangeFinder_Backend *sensor) const
 {
-    if (rangefinder.status(instance) != RangeFinder::RangeFinder_NotConnected &&
-        rangefinder.status(instance) != RangeFinder::RangeFinder_NoData) {
-        mavlink_msg_distance_sensor_send(
-                chan,
-                AP_HAL::millis(),                       // time since system boot TODO: take time of measurement
-                rangefinder.min_distance_cm(instance),  // minimum distance the sensor can measure in centimeters
-                rangefinder.max_distance_cm(instance),  // maximum distance the sensor can measure in centimeters
-                rangefinder.distance_cm(instance),      // current distance reading
-                rangefinder.get_sensor_type(instance),  // type from MAV_DISTANCE_SENSOR enum
-                instance,                               // onboard ID of the sensor == instance
-                rangefinder.get_orientation(instance),  // direction the sensor faces from MAV_SENSOR_ORIENTATION enum
-                0);                                     // Measurement covariance in centimeters, 0 for unknown / invalid readings
+    if (sensor == nullptr) {
+        // should not happen
+        return;
     }
+    if (!sensor->has_data()) {
+        return;
+    }
+
+    mavlink_msg_distance_sensor_send(
+        chan,
+        AP_HAL::millis(),                        // time since system boot TODO: take time of measurement
+        sensor->min_distance_cm(),               // minimum distance the sensor can measure in centimeters
+        sensor->max_distance_cm(),               // maximum distance the sensor can measure in centimeters
+        sensor->distance_cm(),                   // current distance reading
+        sensor->get_mav_distance_sensor_type(),  // type from MAV_DISTANCE_SENSOR enum
+        sensor->instance(),                      // onboard ID of the sensor == instance
+        sensor->orientation(),                   // direction the sensor faces from MAV_SENSOR_ORIENTATION enum
+        0);                                      // Measurement covariance in centimeters, 0 for unknown / invalid readings
 }
 
 bool GCS_MAVLINK::send_distance_sensor(const RangeFinder &rangefinder) const
 {
     for (uint8_t i = 0; i < RANGEFINDER_MAX_INSTANCES; i++) {
         CHECK_PAYLOAD_SIZE(DISTANCE_SENSOR);
-        send_distance_sensor(rangefinder, i);
+        AP_RangeFinder_Backend *sensor = rangefinder.get_backend(i);
+        if (sensor == nullptr) {
+            continue;
+        }
+        send_distance_sensor(sensor);
     }
     return true;
 }
 
 void GCS_MAVLINK::send_distance_sensor_downward(const RangeFinder &rangefinder) const
 {
-    // exit immediately if rangefinder is disabled or not downward looking
-    if (!rangefinder.has_data_orient(ROTATION_PITCH_270)) {
+    AP_RangeFinder_Backend *s = rangefinder.find_instance(ROTATION_PITCH_270);
+    if (s == nullptr) {
         return;
     }
-    uint8_t instance;
-    rangefinder.find_instance(ROTATION_PITCH_270, instance);
-    send_distance_sensor(rangefinder, instance);
+    send_distance_sensor(s);
 }
 
 void GCS_MAVLINK::send_rangefinder_downward(const RangeFinder &rangefinder) const
 {
-    // exit immediately if rangefinder is disabled or not downward looking
-    if (!rangefinder.has_data_orient(ROTATION_PITCH_270)) {
-        // no sonar to report
+    AP_RangeFinder_Backend *s = rangefinder.find_instance(ROTATION_PITCH_270);
+    if (s == nullptr) {
         return;
     }
     mavlink_msg_rangefinder_send(
             chan,
-            rangefinder.distance_cm_orient(ROTATION_PITCH_270) * 0.01f,
-            rangefinder.voltage_mv_orient(ROTATION_PITCH_270) * 0.001f);
+            s->distance_cm() * 0.01f,
+            s->voltage_mv() * 0.001f);
 }
 
 bool GCS_MAVLINK::send_proximity(const AP_Proximity &proximity) const
@@ -755,6 +757,25 @@ mission_ack:
     return mission_is_complete;
 }
 
+void GCS_MAVLINK::push_deferred_messages()
+{
+    while (num_deferred_messages != 0) {
+        if (!try_send_message(deferred_messages[next_deferred_message])) {
+            break;
+        }
+        next_deferred_message++;
+        if (next_deferred_message == ARRAY_SIZE(deferred_messages)) {
+            next_deferred_message = 0;
+        }
+        num_deferred_messages--;
+    }
+}
+
+void GCS_MAVLINK::retry_deferred()
+{
+    push_deferred_messages();
+}
+
 // send a message using mavlink, handling message queueing
 void GCS_MAVLINK::send_message(enum ap_message id)
 {
@@ -763,56 +784,47 @@ void GCS_MAVLINK::send_message(enum ap_message id)
     if (id == MSG_HEARTBEAT) {
         save_signing_timestamp(false);
     }
-    
-    // see if we can send the deferred messages, if any
-    while (num_deferred_messages != 0) {
-        if (!try_send_message(deferred_messages[next_deferred_message])) {
-            break;
+
+    // see if we can send the deferred messages, if any:
+    push_deferred_messages();
+
+    // if there are no deferred messages, attempt to send straight away:
+    if (num_deferred_messages == 0) {
+        if (try_send_message(id)) {
+            // yay, we sent it!
+            return;
         }
-        next_deferred_message++;
-        if (next_deferred_message == MSG_RETRY_DEFERRED) {
-            next_deferred_message = 0;
-        }
-        num_deferred_messages--;
     }
 
-    if (id == MSG_RETRY_DEFERRED) {
+    // we failed to send the message this time around, so try to defer:
+    if (num_deferred_messages == ARRAY_SIZE(deferred_messages)) {
+        // the defer buffer is full, discard this attempt to send.
+        // Note that the message *may* already be in the defer buffer
         return;
     }
 
-    // this message id might already be deferred
+    // check if this message is deferred:
     for (i=0, nextid = next_deferred_message; i < num_deferred_messages; i++) {
         if (deferred_messages[nextid] == id) {
-            // it's already deferred, discard
+            // it's already deferred
             return;
         }
         nextid++;
-        if (nextid == MSG_RETRY_DEFERRED) {
+        if (nextid == ARRAY_SIZE(deferred_messages)) {
             nextid = 0;
         }
     }
 
-    if (num_deferred_messages != 0 ||
-        !try_send_message(id)) {
-        // can't send it now, so defer it
-        if (num_deferred_messages == MSG_RETRY_DEFERRED) {
-            // the defer buffer is full, discard
-            return;
-        }
-        nextid = next_deferred_message + num_deferred_messages;
-        if (nextid >= MSG_RETRY_DEFERRED) {
-            nextid -= MSG_RETRY_DEFERRED;
-        }
-        deferred_messages[nextid] = id;
-        num_deferred_messages++;
-    }
+    // not already deferred, defer it
+    deferred_messages[nextid] = id;
+    num_deferred_messages++;
 }
 
 void GCS_MAVLINK::packetReceived(const mavlink_status_t &status,
                                  mavlink_message_t &msg)
 {
-    // we exclude radio packets to make it possible to use the
-    // CLI over the radio
+    // we exclude radio packets because we historically used this to
+    // make it possible to use the CLI over the radio
     if (msg.msgid != MAVLINK_MSG_ID_RADIO && msg.msgid != MAVLINK_MSG_ID_RADIO_STATUS) {
         mavlink_active |= (1U<<(chan-MAVLINK_COMM_0));
     }
@@ -840,7 +852,7 @@ void GCS_MAVLINK::packetReceived(const mavlink_status_t &status,
 }
 
 void
-GCS_MAVLINK::update(run_cli_fn run_cli, uint32_t max_time_us)
+GCS_MAVLINK::update(uint32_t max_time_us)
 {
     // receive new packets
     mavlink_message_t msg;
@@ -856,22 +868,6 @@ GCS_MAVLINK::update(run_cli_fn run_cli, uint32_t max_time_us)
     for (uint16_t i=0; i<nbytes; i++)
     {
         uint8_t c = comm_receive_ch(chan);
-
-        if (run_cli) {
-            /* allow CLI to be started by hitting enter 3 times, if no
-             *  heartbeat packets have been received */
-            if ((mavlink_active==0) && (AP_HAL::millis() - _cli_timeout) < 20000 && 
-                comm_is_idle(chan)) {
-                if (c == '\n' || c == '\r') {
-                    crlf_count++;
-                } else {
-                    crlf_count = 0;
-                }
-                if (crlf_count == 3) {
-                    run_cli(_port);
-                }
-            }
-        }
 
         bool parsed_packet = false;
         
@@ -909,44 +905,6 @@ GCS_MAVLINK::update(run_cli_fn run_cli, uint32_t max_time_us)
     }
 
     hal.util->perf_end(_perf_update);    
-}
-
-
-/*
-  send raw GPS position information (GPS_RAW_INT, GPS2_RAW, GPS_RTK and GPS2_RTK).
-  returns true if messages fit into transmit buffer, false otherwise.
- */
-bool GCS_MAVLINK::send_gps_raw(AP_GPS &gps)
-{
-    if (HAVE_PAYLOAD_SPACE(chan, GPS_RAW_INT)) {
-        gps.send_mavlink_gps_raw(chan);
-    } else {
-        return false;
-    }
-
-    if (gps.highest_supported_status(0) > AP_GPS::GPS_OK_FIX_3D) {
-        if (HAVE_PAYLOAD_SPACE(chan, GPS_RTK)) {
-            gps.send_mavlink_gps_rtk(chan);
-        }
-
-    }
-
-    if (gps.num_sensors() > 1 && gps.status(1) > AP_GPS::NO_GPS) {
-
-        if (HAVE_PAYLOAD_SPACE(chan, GPS2_RAW)) {
-            gps.send_mavlink_gps2_raw(chan);
-        }
-
-        if (gps.highest_supported_status(1) > AP_GPS::GPS_OK_FIX_3D) {
-            if (HAVE_PAYLOAD_SPACE(chan, GPS2_RTK)) {
-                gps.send_mavlink_gps2_rtk(chan);
-            }
-        }
-    }
-
-    //TODO: Should check what else managed to get through...
-    return true;
-
 }
 
 
@@ -1264,13 +1222,6 @@ void GCS::service_statustext(void)
     }
 }
 
-void GCS::reset_cli_timeout()
-{
-    for (uint8_t i=0; i<num_gcs(); i++) {
-        chan(i).reset_cli_timeout();
-    }
-}
-
 void GCS::send_message(enum ap_message id)
 {
     for (uint8_t i=0; i<num_gcs(); i++) {
@@ -1278,6 +1229,16 @@ void GCS::send_message(enum ap_message id)
             chan(i).send_message(id);
         }
     }
+}
+
+void GCS::retry_deferred()
+{
+    for (uint8_t i=0; i<num_gcs(); i++) {
+        if (chan(i).initialised) {
+            chan(i).retry_deferred();
+        }
+    }
+    service_statustext();
 }
 
 void GCS::data_stream_send()
@@ -1293,7 +1254,7 @@ void GCS::update(void)
 {
     for (uint8_t i=0; i<num_gcs(); i++) {
         if (chan(i).initialised) {
-            chan(i).update(_run_cli);
+            chan(i).update();
         }
     }
 }
@@ -1312,21 +1273,6 @@ void GCS::setup_uarts(AP_SerialManager &serial_manager)
 {
     for (uint8_t i = 1; i < MAVLINK_COMM_NUM_BUFFERS; i++) {
         chan(i).setup_uart(serial_manager, AP_SerialManager::SerialProtocol_MAVLink, i);
-    }
-}
-
-void GCS::handle_interactive_setup()
-{
-    if (cli_enabled()) {
-        AP_HAL::BetterStream* _cliSerial = cliSerial();
-        const char *msg = "\nPress ENTER 3 times to start interactive setup\n";
-        _cliSerial->printf("%s\n", msg);
-        if (chan(1).initialised && (chan(1).get_uart() != NULL)) {
-            chan(1).get_uart()->printf("%s\n", msg);
-        }
-        if (num_gcs() > 2 && chan(2).initialised && (chan(2).get_uart() != NULL)) {
-            chan(2).get_uart()->printf("%s\n", msg);
-        }
     }
 }
 
@@ -1674,6 +1620,23 @@ uint8_t GCS_MAVLINK::handle_preflight_reboot(const mavlink_command_long_t &packe
     return MAV_RESULT_UNSUPPORTED;
 }
 
+/*
+  handle a flight termination request
+ */
+MAV_RESULT GCS_MAVLINK::handle_flight_termination(const mavlink_command_long_t &packet)
+{
+    AP_AdvancedFailsafe *failsafe = get_advanced_failsafe();
+    if (failsafe == nullptr) {
+        return MAV_RESULT_UNSUPPORTED;
+    }
+
+    bool should_terminate = packet.param1 > 0.5f;
+
+    if (failsafe->gcs_terminate(should_terminate)) {
+        return MAV_RESULT_ACCEPTED;
+    }
+    return MAV_RESULT_FAILED;
+}
 
 /*
   handle a R/C bind request (for spektrum)
@@ -2025,11 +1988,212 @@ MAV_RESULT GCS_MAVLINK::handle_command_long_message(mavlink_command_long_t &pack
         result = handle_servorelay_message(packet);
         break;
 
+    case MAV_CMD_DO_FLIGHTTERMINATION:
+        result = handle_flight_termination(packet);
+        break;
+
     default:
         result = MAV_RESULT_UNSUPPORTED;
     }
 
     return result;
+}
+
+bool GCS_MAVLINK::try_send_compass_message(const enum ap_message id)
+{
+    Compass *compass = get_compass();
+    if (compass == nullptr) {
+        return true;
+    }
+    bool ret = true;
+    switch (id) {
+    case MSG_MAG_CAL_PROGRESS:
+        compass->send_mag_cal_progress(chan);
+        ret = true;;
+        break;
+    case MSG_MAG_CAL_REPORT:
+        compass->send_mag_cal_report(chan);
+        ret = true;
+        break;
+    default:
+        ret = true;
+        break;
+    }
+    return ret;
+}
+
+bool GCS_MAVLINK::try_send_mission_message(const enum ap_message id)
+{
+    AP_Mission *mission = get_mission();
+    if (mission == nullptr) {
+        return true;
+    }
+
+    bool ret = true;
+    switch (id) {
+    case MSG_CURRENT_WAYPOINT:
+        CHECK_PAYLOAD_SIZE(MISSION_CURRENT);
+        mavlink_msg_mission_current_send(chan, mission->get_current_nav_index());
+        ret = true;
+        break;
+    case MSG_MISSION_ITEM_REACHED:
+        CHECK_PAYLOAD_SIZE(MISSION_ITEM_REACHED);
+        mavlink_msg_mission_item_reached_send(chan, mission_item_reached_index);
+        ret = true;
+        break;
+    case MSG_NEXT_WAYPOINT:
+        CHECK_PAYLOAD_SIZE(MISSION_REQUEST);
+        queued_waypoint_send();
+        ret = true;
+        break;
+    default:
+        ret = true;
+        break;
+    }
+    return ret;
+}
+
+void GCS_MAVLINK::send_hwstatus()
+{
+    mavlink_msg_hwstatus_send(
+        chan,
+        hal.analogin->board_voltage()*1000,
+        0);
+}
+
+bool GCS_MAVLINK::try_send_gps_message(const enum ap_message id)
+{
+    AP_GPS *gps = get_gps();
+    if (gps == nullptr) {
+        return true;
+    }
+
+    bool ret = true;
+    switch(id) {
+    case MSG_SYSTEM_TIME:
+        CHECK_PAYLOAD_SIZE(SYSTEM_TIME);
+        send_system_time(*gps);
+        ret = true;
+        break;
+    case MSG_GPS_RAW:
+        CHECK_PAYLOAD_SIZE(GPS_RAW_INT);
+        gps->send_mavlink_gps_raw(chan);
+        ret = true;
+        break;
+    case MSG_GPS_RTK:
+        CHECK_PAYLOAD_SIZE(GPS_RTK);
+        gps->send_mavlink_gps_rtk(chan);
+        ret = true;
+        break;
+    case MSG_GPS2_RAW:
+        CHECK_PAYLOAD_SIZE(GPS2_RAW);
+        gps->send_mavlink_gps2_raw(chan);
+        ret = true;
+        break;
+    case MSG_GPS2_RTK:
+        CHECK_PAYLOAD_SIZE(GPS2_RTK);
+        gps->send_mavlink_gps2_rtk(chan);
+        ret = true;
+        break;
+    default:
+        ret = true;
+        break;
+    }
+    return ret;
+}
+
+
+bool GCS_MAVLINK::try_send_camera_message(const enum ap_message id)
+{
+    AP_Camera *camera = get_camera();
+    if (camera == nullptr) {
+        return true;
+    }
+
+    bool ret = true;
+    switch(id) {
+    case MSG_CAMERA_FEEDBACK:
+        CHECK_PAYLOAD_SIZE(CAMERA_FEEDBACK);
+        camera->send_feedback(chan);
+        ret = true;
+        break;
+    default:
+        ret = true;
+        break;
+    }
+    return ret;
+}
+
+bool GCS_MAVLINK::try_send_message(const enum ap_message id)
+{
+    if (telemetry_delayed()) {
+        return false;
+    }
+
+    bool ret = true;
+
+    switch(id) {
+
+    case MSG_NEXT_PARAM:
+        CHECK_PAYLOAD_SIZE(PARAM_VALUE);
+        queued_param_send();
+        ret = true;
+        break;
+
+    case MSG_HWSTATUS:
+        CHECK_PAYLOAD_SIZE(HWSTATUS);
+        send_hwstatus();
+        ret = true;
+        break;
+
+    case MSG_CURRENT_WAYPOINT:
+        /* fall through */
+    case MSG_MISSION_ITEM_REACHED:
+        /* fall through */
+    case MSG_NEXT_WAYPOINT:
+        ret = try_send_mission_message(id);
+        break;
+
+    case MSG_MAG_CAL_PROGRESS:
+        /* fall through */
+    case MSG_MAG_CAL_REPORT:
+        ret = try_send_compass_message(id);
+        break;
+
+    case MSG_EXTENDED_STATUS2:
+        CHECK_PAYLOAD_SIZE(MEMINFO);
+        send_meminfo();
+        ret = true;
+        break;
+
+    case MSG_CAMERA_FEEDBACK:
+        ret = try_send_camera_message(id);
+        break;
+
+    case MSG_GPS_RAW:
+        /* fall through */
+    case MSG_GPS_RTK:
+        /* fall through */
+    case MSG_GPS2_RAW:
+        /* fall through */
+    case MSG_GPS2_RTK:
+        /* fall through */
+    case MSG_SYSTEM_TIME:
+        ret = try_send_gps_message(id);
+        break;
+
+    default:
+        // try_send_message must always at some stage return true for
+        // a message, or we will attempt to infinitely retry the
+        // message as part of send_message.
+        // This message will be sent out at the same rate as the
+        // unknown message, so should be safe.
+        gcs().send_text(MAV_SEVERITY_DEBUG, "Sending unknown message (%u)", id);
+        ret = true;
+        break;
+    }
+
+    return ret;
 }
 
 GCS &gcs()

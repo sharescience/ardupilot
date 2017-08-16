@@ -1,5 +1,7 @@
 #include "Rover.h"
 
+#include <AP_RangeFinder/RangeFinder_Backend.h>
+
 // initialise compass
 void Rover::init_compass()
 {
@@ -8,7 +10,7 @@ void Rover::init_compass()
     }
 
     if (!compass.init()|| !compass.read()) {
-        cliSerial->printf("Compass initialisation failed!\n");
+        hal.console->printf("Compass initialisation failed!\n");
         g.compass_enabled = false;
     } else {
         ahrs.set_compass(&compass);
@@ -104,10 +106,10 @@ void Rover::update_wheel_encoder()
     g2.wheel_encoder.update();
 
     // initialise on first iteration
-    uint32_t now = AP_HAL::millis();
+    const uint32_t now = AP_HAL::millis();
     if (wheel_encoder_last_ekf_update_ms == 0) {
         wheel_encoder_last_ekf_update_ms = now;
-        for (uint8_t i = 0; i<g2.wheel_encoder.num_sensors(); i++) {
+        for (uint8_t i = 0; i < g2.wheel_encoder.num_sensors(); i++) {
             wheel_encoder_last_angle_rad[i] = g2.wheel_encoder.get_delta_angle(i);
             wheel_encoder_last_update_ms[i] = g2.wheel_encoder.get_last_reading_ms(i);
         }
@@ -119,18 +121,17 @@ void Rover::update_wheel_encoder()
     // send delta time (time between this wheel encoder time and previous wheel encoder time)
     // in case where wheel hasn't moved, count = 0 (cap the delta time at 50ms - or system time)
     //     use system clock of last update instead of time of last ping
-    float system_dt = (now - wheel_encoder_last_ekf_update_ms) / 1000.0f;
-    for (uint8_t i = 0; i<g2.wheel_encoder.num_sensors(); i++) {
-
+    const float system_dt = (now - wheel_encoder_last_ekf_update_ms) / 1000.0f;
+    for (uint8_t i = 0; i < g2.wheel_encoder.num_sensors(); i++) {
         // calculate angular change (in radians)
-        float curr_angle_rad = g2.wheel_encoder.get_delta_angle(i);
-        float delta_angle = curr_angle_rad - wheel_encoder_last_angle_rad[i];
+        const float curr_angle_rad = g2.wheel_encoder.get_delta_angle(i);
+        const float delta_angle = curr_angle_rad - wheel_encoder_last_angle_rad[i];
         wheel_encoder_last_angle_rad[i] = curr_angle_rad;
 
         // calculate delta time
         float delta_time;
-        uint32_t latest_sensor_update_ms = g2.wheel_encoder.get_last_reading_ms(i);
-        uint32_t sensor_diff_ms = latest_sensor_update_ms - wheel_encoder_last_update_ms[i];
+        const uint32_t latest_sensor_update_ms = g2.wheel_encoder.get_last_reading_ms(i);
+        const uint32_t sensor_diff_ms = latest_sensor_update_ms - wheel_encoder_last_update_ms[i];
 
         // if we have not received any sensor updates, or time difference is too high then use time since last update to the ekf
         // check for old or insane sensor update times
@@ -155,7 +156,6 @@ void Rover::update_wheel_encoder()
         } else {
             wheel_encoder_rpm[i] = 0.0f;
         }
-
     }
 
     // record system time update for next iteration
@@ -202,15 +202,18 @@ void Rover::read_rangefinders(void)
 {
     rangefinder.update();
 
-    if (rangefinder.status(0) == RangeFinder::RangeFinder_NotConnected) {
+    AP_RangeFinder_Backend *s0 = rangefinder.get_backend(0);
+    AP_RangeFinder_Backend *s1 = rangefinder.get_backend(1);
+
+    if (s0 == nullptr || s0->status() == RangeFinder::RangeFinder_NotConnected) {
         // this makes it possible to disable rangefinder at runtime
         return;
     }
 
-    if (rangefinder.has_data(1)) {
+    if (s1 != nullptr && s1->has_data()) {
         // we have two rangefinders
-        obstacle.rangefinder1_distance_cm = rangefinder.distance_cm(0);
-        obstacle.rangefinder2_distance_cm = rangefinder.distance_cm(1);
+        obstacle.rangefinder1_distance_cm = s0->distance_cm();
+        obstacle.rangefinder2_distance_cm = s1->distance_cm();
         if (obstacle.rangefinder1_distance_cm < static_cast<uint16_t>(g.rangefinder_trigger_cm) &&
             obstacle.rangefinder1_distance_cm < static_cast<uint16_t>(obstacle.rangefinder2_distance_cm))  {
             // we have an object on the left
@@ -237,7 +240,7 @@ void Rover::read_rangefinders(void)
         }
     } else {
         // we have a single rangefinder
-        obstacle.rangefinder1_distance_cm = rangefinder.distance_cm(0);
+        obstacle.rangefinder1_distance_cm = s0->distance_cm();
         obstacle.rangefinder2_distance_cm = 0;
         if (obstacle.rangefinder1_distance_cm < static_cast<uint16_t>(g.rangefinder_trigger_cm))  {
             // obstacle detected in front
@@ -349,7 +352,8 @@ void Rover::update_sensor_status_flags(void)
         if (g.rangefinder_trigger_cm > 0) {
             control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_LASER_POSITION;
         }
-        if (rangefinder.has_data(0)) {
+        AP_RangeFinder_Backend *s = rangefinder.get_backend(0);
+        if (s != nullptr && s->has_data()) {
             control_sensors_health |= MAV_SYS_STATUS_SENSOR_LASER_POSITION;
         }
     }
