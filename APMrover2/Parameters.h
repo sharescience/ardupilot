@@ -43,8 +43,8 @@ public:
         k_param_battery_curr_pin,
 
         // braking
-        k_param_braking_percent = 30,
-        k_param_braking_speederr,
+        k_param_braking_percent_old = 30,   // unused
+        k_param_braking_speederr_old,       // unused
 
         // misc2
         k_param_log_bitmask = 40,
@@ -73,7 +73,7 @@ public:
         k_param_serial2_baud_old,
         k_param_serial2_protocol,   // deprecated, can be deleted
         k_param_serial_manager,     // serial manager library
-        k_param_cli_enabled,
+        k_param_cli_enabled_old,
         k_param_gcs3,
         k_param_gcs_pid_mask,
 
@@ -104,7 +104,7 @@ public:
         k_param_crosstrack_entry_angle,
         k_param_speed_cruise,
         k_param_speed_turn_gain,
-        k_param_speed_turn_dist,
+        k_param_speed_turn_dist,    // unused
         k_param_ch7_option,
         k_param_auto_trigger_pin,
         k_param_auto_kickstart,
@@ -127,10 +127,10 @@ public:
         k_param_throttle_min = 170,
         k_param_throttle_max,
         k_param_throttle_cruise,
-        k_param_throttle_slewrate_old,
-        k_param_throttle_reduction,
+        k_param_throttle_slewrate_old,  // unused
+        k_param_throttle_reduction,     // unused
         k_param_skid_steer_in,
-        k_param_skid_steer_out_old,
+        k_param_skid_steer_out_old, // unused
 
         // failsafe control
         k_param_fs_action = 180,
@@ -168,6 +168,7 @@ public:
         k_param_command_total = 220,    // unused
         k_param_command_index,          // unused
         k_param_waypoint_radius,
+        k_param_waypoint_overshoot,
 
         //
         // 230: camera control
@@ -180,7 +181,7 @@ public:
         // 240: PID Controllers
         k_param_pidNavSteer = 230,
         k_param_pidServoSteer,  // unused
-        k_param_pidSpeedThrottle,
+        k_param_pidSpeedThrottle_old,   // unused
 
         // high RC channels
         k_param_rc_9_old = 235,
@@ -195,7 +196,7 @@ public:
         k_param_compass,
         k_param_rcmap,
         k_param_L1_controller,
-        k_param_steerController,
+        k_param_steerController_old,    // unused
         k_param_barometer,
         k_param_notify,
         k_param_button,
@@ -215,18 +216,11 @@ public:
     AP_Int8     reset_switch_chan;
     AP_Int8     initial_mode;
 
-    // braking
-    AP_Int8     braking_percent;
-    AP_Float    braking_speederr;
-
     // Telemetry control
     //
     AP_Int16    sysid_this_mav;
     AP_Int16    sysid_my_gcs;
     AP_Int8     telem_delay;
-#if CLI_ENABLED == ENABLED
-    AP_Int8     cli_enabled;
-#endif
 
     // sensor parameters
     AP_Int8     compass_enabled;
@@ -235,7 +229,6 @@ public:
     //
     AP_Float    speed_cruise;
     AP_Int8     speed_turn_gain;
-    AP_Float    speed_turn_dist;
     AP_Int8     ch7_option;
     AP_Int8     auto_trigger_pin;
     AP_Float    auto_kickstart;
@@ -279,16 +272,9 @@ public:
     // Waypoints
     //
     AP_Float    waypoint_radius;
+    AP_Float    waypoint_overshoot;
 
-    // PID controllers
-    //
-    PID         pidSpeedThrottle;
-
-    Parameters() :
-        // PID controller    initial P        initial I        initial D        initial imax
-        //-----------------------------------------------------------------------------------
-        pidSpeedThrottle    (0.7f,            0.2f,            0.2f,            4000)
-        {}
+    Parameters() {}
 };
 
 /*
@@ -327,6 +313,12 @@ public:
 
     // wheel encoders
     AP_WheelEncoder wheel_encoder;
+
+    // steering and throttle controller
+    AR_AttitudeControl attitude_control;
+
+    // turn radius of vehicle (only used in steering mode)
+    AP_Float turn_radius;
 };
 
 extern const AP_Param::Info var_info[];

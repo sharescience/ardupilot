@@ -65,15 +65,6 @@ const AP_Param::Info Rover::var_info[] = {
     // @User: Advanced
     GSCALAR(sysid_my_gcs,           "SYSID_MYGCS",      255),
 
-#if CLI_ENABLED == ENABLED
-    // @Param: CLI_ENABLED
-    // @DisplayName: CLI Enable
-    // @Description: This enables/disables the checking for three carriage returns on telemetry links on startup to enter the diagnostics command line interface
-    // @Values: 0:Disabled,1:Enabled
-    // @User: Advanced
-    GSCALAR(cli_enabled,            "CLI_ENABLED",    0),
-#endif
-
     // @Param: TELEM_DELAY
     // @DisplayName: Telemetry startup delay
     // @Description: The amount of time (in seconds) to delay radio telemetry to prevent an Xbee bricking on power up
@@ -131,33 +122,6 @@ const AP_Param::Info Rover::var_info[] = {
     // @Increment: 1
     // @User: Standard
     GSCALAR(speed_turn_gain,    "SPEED_TURN_GAIN",  50),
-
-    // @Param: SPEED_TURN_DIST
-    // @DisplayName: Distance to turn to start reducing speed
-    // @Description: The distance to the next turn at which the rover reduces its target speed by the SPEED_TURN_GAIN
-    // @Units: m
-    // @Range: 0 100
-    // @Increment: 0.1
-    // @User: Standard
-    GSCALAR(speed_turn_dist,    "SPEED_TURN_DIST",  2.0f),
-
-    // @Param: BRAKING_PERCENT
-    // @DisplayName: Percentage braking to apply
-    // @Description: The maximum reverse throttle braking percentage to apply when cornering
-    // @Units: %
-    // @Range: 0 100
-    // @Increment: 1
-    // @User: Standard
-    GSCALAR(braking_percent,    "BRAKING_PERCENT",  0),
-
-    // @Param: BRAKING_SPEEDERR
-    // @DisplayName: Speed error at which to apply braking
-    // @Description: The amount of overspeed error at which to start applying braking
-    // @Units: m/s
-    // @Range: 0 100
-    // @Increment: 1
-    // @User: Standard
-    GSCALAR(braking_speederr,   "BRAKING_SPEEDERR",  3),
 
     // @Param: PIVOT_TURN_ANGLE
     // @DisplayName: Pivot turn angle
@@ -350,6 +314,15 @@ const AP_Param::Info Rover::var_info[] = {
     // @User: Standard
     GSCALAR(waypoint_radius,        "WP_RADIUS",        2.0f),
 
+    // @Param: WP_OVERSHOOT
+    // @DisplayName: Waypoint overshoot maximum
+    // @Description: Waypoint overshoot maximum in meters.  The vehicle will attempt to stay within this many meters of the track as it completes one waypoint and moves to the next.
+    // @Units: m
+    // @Range: 0 10
+    // @Increment: 0.1
+    // @User: Standard
+    GSCALAR(waypoint_overshoot,     "WP_OVERSHOOT", 2.0f),
+
     // @Param: TURN_MAX_G
     // @DisplayName: Turning maximum G force
     // @Description: The maximum turning acceleration (in units of gravities) that the rover can handle while remaining stable. The navigation code will keep the lateral acceleration below this level to avoid rolling over or slipping the wheels in turns
@@ -358,14 +331,6 @@ const AP_Param::Info Rover::var_info[] = {
     // @Increment: 0.1
     // @User: Standard
     GSCALAR(turn_max_g,             "TURN_MAX_G",      2.0f),
-
-    // @Group: STEER2SRV_
-    // @Path: ../libraries/APM_Control/AP_SteerController.cpp
-    GOBJECT(steerController,        "STEER2SRV_",   AP_SteerController),
-
-    // @Group: SPEED2THR_
-    // @Path: ../libraries/PID/PID.cpp
-    GGROUP(pidSpeedThrottle,        "SPEED2THR_", PID),
 
     // variables not in the g class which contain EEPROM saved variables
 
@@ -472,15 +437,15 @@ const AP_Param::Info Rover::var_info[] = {
     // @Path: ../libraries/AP_GPS/AP_GPS.cpp
     GOBJECT(gps, "GPS_", AP_GPS),
 
-    #if AP_AHRS_NAVEKF_AVAILABLE
-        // @Group: EK2_
-        // @Path: ../libraries/AP_NavEKF2/AP_NavEKF2.cpp
-        GOBJECTN(EKF2, NavEKF2, "EK2_", NavEKF2),
+#if AP_AHRS_NAVEKF_AVAILABLE
+    // @Group: EK2_
+    // @Path: ../libraries/AP_NavEKF2/AP_NavEKF2.cpp
+    GOBJECTN(EKF2, NavEKF2, "EK2_", NavEKF2),
 
-        // @Group: EK3_
-        // @Path: ../libraries/AP_NavEKF3/AP_NavEKF3.cpp
-        GOBJECTN(EKF3, NavEKF3, "EK3_", NavEKF3),
-    #endif
+    // @Group: EK3_
+    // @Path: ../libraries/AP_NavEKF3/AP_NavEKF3.cpp
+    GOBJECTN(EKF3, NavEKF3, "EK3_", NavEKF3),
+#endif
 
     // @Group: MIS_
     // @Path: ../libraries/AP_Mission/AP_Mission.cpp
@@ -550,6 +515,19 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Path: ../libraries/AP_WheelEncoder/AP_WheelEncoder.cpp
     AP_SUBGROUPINFO(wheel_encoder, "WENC", 9, ParametersG2, AP_WheelEncoder),
 
+    // @Group: ATC
+    // @Path: ../libraries/APM_Control/AR_AttitudeControl.cpp
+    AP_SUBGROUPINFO(attitude_control, "ATC", 10, ParametersG2, AR_AttitudeControl),
+
+    // @Param: TURN_RADIUS
+    // @DisplayName: Turn radius of vehicle
+    // @Description: Turn radius of vehicle in meters while at low speeds.  Lower values produce tighter turns in steering mode
+    // @Units: m
+    // @Range: 0 10
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("TURN_RADIUS", 11, ParametersG2, turn_radius, 0.9),
+
     AP_GROUPEND
 };
 
@@ -560,7 +538,8 @@ ParametersG2::ParametersG2(void)
     afs(rover.mission, rover.barometer, rover.gps, rover.rcmap),
 #endif
     beacon(rover.serial_manager),
-    motors(rover.ServoRelayEvents)
+    motors(rover.ServoRelayEvents),
+    attitude_control(rover.ahrs)
 {
     AP_Param::setup_object_defaults(this, var_info);
 }
@@ -594,19 +573,19 @@ const AP_Param::ConversionInfo conversion_table[] = {
 void Rover::load_parameters(void)
 {
     if (!AP_Param::check_var_info()) {
-        cliSerial->printf("Bad var table\n");
+        hal.console->printf("Bad var table\n");
         AP_HAL::panic("Bad var table");
     }
 
     if (!g.format_version.load() ||
          g.format_version != Parameters::k_format_version) {
         // erase all parameters
-        cliSerial->printf("Firmware change: erasing EEPROM...\n");
+        hal.console->printf("Firmware change: erasing EEPROM...\n");
         AP_Param::erase_all();
 
         // save the current format version
         g.format_version.set_and_save(Parameters::k_format_version);
-        cliSerial->printf("done.\n");
+        hal.console->printf("done.\n");
     }
 
     const uint32_t before = micros();
@@ -627,7 +606,7 @@ void Rover::load_parameters(void)
                                       Parameters::k_param_rc_13_old, Parameters::k_param_rc_14_old };
     const uint16_t old_aux_chan_mask = 0x3FFA;
     SRV_Channels::upgrade_parameters(old_rc_keys, old_aux_chan_mask, &rcmap);
-    cliSerial->printf("load_all took %uus\n", micros() - before);
+    hal.console->printf("load_all took %uus\n", micros() - before);
     // set a more reasonable default NAVL1_PERIOD for rovers
     L1_controller.set_default_period(NAVL1_PERIOD);
 }

@@ -3,16 +3,22 @@
 
 void ModeSteering::update()
 {
-    // convert pilot throttle input to desired speed
-    // speed in proportion to cruise speed, up to 50% throttle, then uses nudging above that.
-    float target_speed = channel_throttle->get_control_in() * 0.01f * 2.0f * g.speed_cruise;
-    target_speed = constrain_float(target_speed, -g.speed_cruise, g.speed_cruise);
+    // convert pilot throttle input to desired speed (up to twice the cruise speed)
+    float target_speed = channel_throttle->get_control_in() * 0.01f * calc_speed_max(g.speed_cruise, g.throttle_cruise);
+
+    // get speed forward
+    float speed;
+    if (!attitude_control.get_forward_speed(speed)) {
+        // no valid speed so stop
+        g2.motors.set_throttle(g.throttle_min.get());
+        g2.motors.set_steering(0.0f);
+        lateral_acceleration = 0.0f;
+        return;
+    }
 
     // in steering mode we control lateral acceleration directly. We first calculate the maximum lateral
     // acceleration at full steering lock for this speed. That is V^2/R where R is the radius of turn.
-    // We get the radius of turn from half the STEER2SRV_P.
-    const float ground_speed = rover.ground_speed;
-    float max_g_force = ground_speed * ground_speed / rover.steerController.get_turn_radius();
+    float max_g_force = speed * speed / MAX(g2.turn_radius, 0.1f);
 
     // constrain to user set TURN_MAX_G
     max_g_force = constrain_float(max_g_force, 0.1f, g.turn_max_g * GRAVITY_MSS);
@@ -21,16 +27,21 @@ void ModeSteering::update()
     lateral_acceleration = max_g_force * (channel_steer->get_control_in() / 4500.0f);
 
     // reverse target lateral acceleration if backing up
+    bool reversed = false;
     if (is_negative(target_speed)) {
+        reversed = true;
         lateral_acceleration = -lateral_acceleration;
     }
 
-    // mark us as in_reverse when using a negative throttle to stop AHRS getting off
-    rover.set_reverse(is_negative(target_speed));
-
-    // run steering controller
-    calc_nav_steer();
+    // mark us as in_reverse when using a negative throttle
+    rover.set_reverse(reversed);
 
     // run speed to throttle output controller
-    calc_throttle(target_speed);
+    if (is_zero(target_speed)) {
+        stop_vehicle();
+    } else {
+        // run steering controller
+        calc_nav_steer(reversed);
+        calc_throttle(target_speed, false);
+    }
 }

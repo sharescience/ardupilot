@@ -21,19 +21,15 @@ import arduplane
 import quadplane
 import ardusub
 from pysim import util
-
-os.environ['PYTHONUNBUFFERED'] = '1'
-
-os.putenv('TMPDIR', util.reltopdir('tmp'))
-
+from pymavlink import mavutil
+from pymavlink.generator import mavtemplate
 
 def get_default_params(atype, binary):
     """Get default parameters."""
 
     # use rover simulator so SITL is not starved of input
-    from pymavlink import mavutil
     HOME = mavutil.location(40.071374969556928, -105.22978898137808, 1583.702759, 246)
-    if binary.find("plane") != -1 or binary.find("rover") != -1:
+    if "plane" in binary or "rover" in binary:
         frame = "rover"
     else:
         frame = "+"
@@ -71,12 +67,11 @@ def build_all():
 def build_binaries():
     """Run the build_binaries.sh script."""
     print("Running build_binaries.sh")
-    import shutil
     # copy the script as it changes git branch, which can change the script while running
     orig = util.reltopdir('Tools/scripts/build_binaries.sh')
     copy = util.reltopdir('./build_binaries.sh')
-    shutil.copyfile(orig, copy)
-    shutil.copymode(orig, copy)
+    shutil.copy2(orig, copy)
+
     if util.run_cmd(copy, directory=util.reltopdir('.')) != 0:
         print("Failed build_binaries.sh")
         return False
@@ -86,12 +81,11 @@ def build_binaries():
 def build_devrelease():
     """Run the build_devrelease.sh script."""
     print("Running build_devrelease.sh")
-    import shutil
     # copy the script as it changes git branch, which can change the script while running
     orig = util.reltopdir('Tools/scripts/build_devrelease.sh')
     copy = util.reltopdir('./build_devrelease.sh')
-    shutil.copyfile(orig, copy)
-    shutil.copymode(orig, copy)
+    shutil.copy2(orig, copy)
+
     if util.run_cmd(copy, directory=util.reltopdir('.')) != 0:
         print("Failed build_devrelease.sh")
         return False
@@ -123,7 +117,6 @@ def build_parameters():
 
 def convert_gpx():
     """Convert any tlog files to GPX and KML."""
-    import glob
     mavlog = glob.glob(util.reltopdir("../buildlogs/*.tlog"))
     for m in mavlog:
         util.run_cmd(util.reltopdir("modules/mavlink/pymavlink/tools/mavtogpx.py") + " --nofixcheck " + m)
@@ -155,92 +148,28 @@ def alarm_handler(signum, frame):
         pass
     sys.exit(1)
 
-
-############## main program #############
-parser = optparse.OptionParser("autotest")
-parser.add_option("--skip", type='string', default='', help='list of steps to skip (comma separated)')
-parser.add_option("--list", action='store_true', default=False, help='list the available steps')
-parser.add_option("--viewerip", default=None, help='IP address to send MAVLink and fg packets to')
-parser.add_option("--map", action='store_true', default=False, help='show map')
-parser.add_option("--experimental", default=False, action='store_true', help='enable experimental tests')
-parser.add_option("--timeout", default=3000, type='int', help='maximum runtime in seconds')
-parser.add_option("--valgrind", default=False, action='store_true', help='run ArduPilot binaries under valgrind')
-parser.add_option("--gdb", default=False, action='store_true', help='run ArduPilot binaries under gdb')
-parser.add_option("--debug", default=False, action='store_true', help='make built binaries debug binaries')
-parser.add_option("-j", default=None, type='int', help='build CPUs')
-parser.add_option("--frame", type='string', default=None, help='specify frame type')
-
-opts, args = parser.parse_args()
-
-
-steps = [
-    'prerequisites',
-    'build.All',
-    'build.Binaries',
-    # 'build.DevRelease',
-    'build.Examples',
-    'build.Parameters',
-
-    'build.ArduPlane',
-    'defaults.ArduPlane',
-    'fly.ArduPlane',
-    'fly.QuadPlane',
-
-    'build.APMrover2',
-    'defaults.APMrover2',
-    'drive.APMrover2',
-
-    'build.ArduCopter',
-    'defaults.ArduCopter',
-    'fly.ArduCopter',
-
-    'build.Helicopter',
-    'fly.CopterAVC',
-
-    'build.AntennaTracker',
-    
-    'build.ArduSub',
-    'defaults.ArduSub',
-    'dive.ArduSub',
-
-    'convertgpx',
-    ]
-
-skipsteps = opts.skip.split(',')
-
-# ensure we catch timeouts
-signal.signal(signal.SIGALRM, alarm_handler)
-signal.alarm(opts.timeout)
-
-if opts.list:
-    for step in steps:
-        print(step)
-    sys.exit(0)
-
-
-def skip_step(step):
+def should_run_step(step):
     """See if a step should be skipped."""
     for skip in skipsteps:
         if fnmatch.fnmatch(step.lower(), skip.lower()):
-            return True
-    return False
+            return False
+    return True
 
+__bin_names = {
+    "ArduCopter" : "arducopter",
+    "ArduPlane" : "arduplane",
+    "APMrover2" : "ardurover",
+    "AntennaTracker" : "antennatracker",
+    "CopterAVC" : "arducopter-heli",
+    "QuadPlane" : "arduplane",
+    "ArduSub" : "ardusub"
+}
 
 def binary_path(step, debug=False):
-    if step.find("ArduCopter") != -1:
-        binary_name = "arducopter"
-    elif step.find("ArduPlane") != -1:
-        binary_name = "arduplane"
-    elif step.find("APMrover2") != -1:
-        binary_name = "ardurover"
-    elif step.find("AntennaTracker") != -1:
-        binary_name = "antennatracker"
-    elif step.find("CopterAVC") != -1:
-        binary_name = "arducopter-heli"
-    elif step.find("QuadPlane") != -1:
-        binary_name = "arduplane"
-    elif step.find("ArduSub") != -1:
-        binary_name = "ardusub"
+    vehicle = step.split(".")[1]
+
+    if vehicle in __bin_names:
+        binary_name = __bin_names[vehicle]
     else:
         # cope with builds that don't have a specific binary
         return None
@@ -289,17 +218,9 @@ def run_step(step):
 
     binary = binary_path(step, debug=opts.debug)
 
-    if step == 'defaults.ArduPlane':
-        return get_default_params('ArduPlane', binary)
-
-    if step == 'defaults.ArduCopter':
-        return get_default_params('ArduCopter', binary)
-
-    if step == 'defaults.APMrover2':
-        return get_default_params('APMrover2', binary)
-    
-    if step == 'defaults.ArduSub':
-        return get_default_params('ArduSub', binary)
+    if step.startswith("default"):
+        vehicle = step[8:]
+        return get_default_params(vehicle, binary)
 
     if step == 'fly.ArduCopter':
         return arducopter.fly_ArduCopter(binary, viewerip=opts.viewerip, use_map=opts.map, valgrind=opts.valgrind, gdb=opts.gdb, frame=opts.frame)
@@ -378,20 +299,17 @@ class TestResults(object):
 
     def addglob(self, name, pattern):
         """Add a set of files."""
-        import glob
         for f in glob.glob(util.reltopdir('../buildlogs/%s' % pattern)):
             self.addfile(name, os.path.basename(f))
 
     def addglobimage(self, name, pattern):
         """Add a set of images."""
-        import glob
         for f in glob.glob(util.reltopdir('../buildlogs/%s' % pattern)):
             self.addimage(name, os.path.basename(f))
 
 
 def write_webresults(results_to_write):
     """Write webpage results."""
-    from pymavlink.generator import mavtemplate
     t = mavtemplate.MAVTemplate()
     for h in glob.glob(util.reltopdir('Tools/autotest/web/*.html')):
         html = util.loadfile(h)
@@ -453,10 +371,6 @@ def write_fullresults():
 
     write_webresults(results)
 
-
-results = TestResults()
-
-
 def check_logs(step):
     """Check for log files from a step."""
     print("check step: ", step)
@@ -480,7 +394,6 @@ def check_logs(step):
         os.rename(corefile, newname)
         util.run_cmd('/bin/cp A*/A*.elf ../buildlogs', directory=util.reltopdir('.'))
 
-
 def run_tests(steps):
     """Run a list of steps."""
     global results
@@ -489,18 +402,19 @@ def run_tests(steps):
     failed = []
     for step in steps:
         util.pexpect_close_all()
-        if skip_step(step):
-            continue
 
         t1 = time.time()
         print(">>>> RUNNING STEP: %s at %s" % (step, time.asctime()))
         try:
-            if not run_step(step):
+            if run_step(step):
+                results.add(step, '<span class="passed-text">PASSED</span>', time.time() - t1)
+                print(">>>> PASSED STEP: %s at %s" % (step, time.asctime()))
+                check_logs(step)
+            else:
                 print(">>>> FAILED STEP: %s at %s" % (step, time.asctime()))
                 passed = False
                 failed.append(step)
                 results.add(step, '<span class="failed-text">FAILED</span>', time.time() - t1)
-                continue
         except Exception as msg:
             passed = False
             failed.append(step)
@@ -508,10 +422,6 @@ def run_tests(steps):
             traceback.print_exc(file=sys.stdout)
             results.add(step, '<span class="failed-text">FAILED</span>', time.time() - t1)
             check_logs(step)
-            continue
-        results.add(step, '<span class="passed-text">PASSED</span>', time.time() - t1)
-        print(">>>> PASSED STEP: %s at %s" % (step, time.asctime()))
-        check_logs(step)
     if not passed:
         print("FAILED %u tests: %s" % (len(failed), failed))
 
@@ -521,39 +431,105 @@ def run_tests(steps):
 
     return passed
 
+if __name__ == "__main__":
+############## main program #############
+    os.environ['PYTHONUNBUFFERED'] = '1'
 
-util.mkdir_p(util.reltopdir('../buildlogs'))
+    os.putenv('TMPDIR', util.reltopdir('tmp'))
 
-lckfile = util.reltopdir('../buildlogs/autotest.lck')
-lck = util.lock_file(lckfile)
-if lck is None:
-    print("autotest is locked - exiting.  lckfile=(%s)" % (lckfile,))
-    sys.exit(0)
+    parser = optparse.OptionParser("autotest")
+    parser.add_option("--skip", type='string', default='', help='list of steps to skip (comma separated)')
+    parser.add_option("--list", action='store_true', default=False, help='list the available steps')
+    parser.add_option("--viewerip", default=None, help='IP address to send MAVLink and fg packets to')
+    parser.add_option("--map", action='store_true', default=False, help='show map')
+    parser.add_option("--experimental", default=False, action='store_true', help='enable experimental tests')
+    parser.add_option("--timeout", default=3000, type='int', help='maximum runtime in seconds')
+    parser.add_option("--valgrind", default=False, action='store_true', help='run ArduPilot binaries under valgrind')
+    parser.add_option("--gdb", default=False, action='store_true', help='run ArduPilot binaries under gdb')
+    parser.add_option("--debug", default=False, action='store_true', help='make built binaries debug binaries')
+    parser.add_option("-j", default=None, type='int', help='build CPUs')
+    parser.add_option("--frame", type='string', default=None, help='specify frame type')
 
-atexit.register(util.pexpect_close_all)
+    opts, args = parser.parse_args()
 
-if len(args) > 0:
-    # allow a wildcard list of steps
-    matched = []
-    for a in args:
-        arg_matched = False
-        for s in steps:
-            if fnmatch.fnmatch(s.lower(), a.lower()):
-                matched.append(s)
-                arg_matched = True
-        if not arg_matched:
-            print("No steps matched argument ({})".format(a))
+
+    steps = [
+    'prerequisites',
+    'build.All',
+    'build.Binaries',
+    # 'build.DevRelease',
+    'build.Examples',
+    'build.Parameters',
+
+    'build.ArduPlane',
+    'defaults.ArduPlane',
+    'fly.ArduPlane',
+    'fly.QuadPlane',
+
+    'build.APMrover2',
+    'defaults.APMrover2',
+    'drive.APMrover2',
+
+    'build.ArduCopter',
+    'defaults.ArduCopter',
+    'fly.ArduCopter',
+
+    'build.Helicopter',
+    'fly.CopterAVC',
+
+    'build.AntennaTracker',
+
+    'build.ArduSub',
+    'defaults.ArduSub',
+    'dive.ArduSub',
+
+    'convertgpx',
+    ]
+
+    skipsteps = opts.skip.split(',')
+
+    # ensure we catch timeouts
+    signal.signal(signal.SIGALRM, alarm_handler)
+    signal.alarm(opts.timeout)
+
+    if opts.list:
+        for step in steps:
+            print(step)
+        sys.exit(0)
+
+    util.mkdir_p(util.reltopdir('../buildlogs'))
+
+    lckfile = util.reltopdir('../buildlogs/autotest.lck')
+    lck = util.lock_file(lckfile)
+
+    if lck is None:
+        print("autotest is locked - exiting.  lckfile=(%s)" % (lckfile,))
+        sys.exit(0)
+
+    atexit.register(util.pexpect_close_all)
+
+    if len(args) > 0:
+        # allow a wildcard list of steps
+        matched = []
+        for a in args:
+            matches = [step for step in steps if fnmatch.fnmatch(step.lower(), a.lower())]
+            if not len(matches):
+                print("No steps matched {}".format(a))
+            matched.extend(matches)
+        steps = matched
+
+    # skip steps according to --skip option:
+    steps = [ s for s in steps if should_run_step(s) ]
+
+    results = TestResults()
+
+    try:
+        if not run_tests(steps):
             sys.exit(1)
-
-    steps = matched
-
-try:
-    if not run_tests(steps):
+    except KeyboardInterrupt:
+        util.pexpect_close_all()
         sys.exit(1)
-except KeyboardInterrupt:
-    util.pexpect_close_all()
-    sys.exit(1)
-except Exception:
+    except Exception:
     # make sure we kill off any children
-    util.pexpect_close_all()
-    raise
+        util.pexpect_close_all()
+        raise

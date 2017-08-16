@@ -19,6 +19,7 @@
 #include <AP_Frsky_Telem/AP_Frsky_Telem.h>
 #include <AP_ServoRelayEvents/AP_ServoRelayEvents.h>
 #include <AP_Camera/AP_Camera.h>
+#include <AP_AdvancedFailsafe/AP_AdvancedFailsafe.h>
 
 // check if a message will fit in the payload space available
 #define HAVE_PAYLOAD_SPACE(chan, id) (comm_get_txspace(chan) >= GCS_MAVLINK::packet_overhead_chan(chan)+MAVLINK_MSG_ID_ ## id ## _LEN)
@@ -45,6 +46,9 @@ enum ap_message {
     MSG_RAW_IMU2,
     MSG_RAW_IMU3,
     MSG_GPS_RAW,
+    MSG_GPS_RTK,
+    MSG_GPS2_RAW,
+    MSG_GPS2_RTK,
     MSG_SYSTEM_TIME,
     MSG_SERVO_OUT,
     MSG_NEXT_WAYPOINT,
@@ -76,7 +80,7 @@ enum ap_message {
     MSG_BATTERY_STATUS,
     MSG_AOA_SSA,
     MSG_LANDING,
-    MSG_RETRY_DEFERRED // this must be last
+    MSG_LAST // MSG_LAST must be the last entry in this enum
 };
 
 ///
@@ -87,8 +91,7 @@ class GCS_MAVLINK
 {
 public:
     GCS_MAVLINK();
-    FUNCTOR_TYPEDEF(run_cli_fn, void, AP_HAL::UARTDriver*);
-    void        update(run_cli_fn run_cli, uint32_t max_time_us=1000);
+    void        update(uint32_t max_time_us=1000);
     void        init(AP_HAL::UARTDriver *port, mavlink_channel_t mav_chan);
     void        setup_uart(const AP_SerialManager& serial_manager, AP_SerialManager::SerialProtocol protocol, uint8_t instance);
     void        send_message(enum ap_message id);
@@ -132,9 +135,6 @@ public:
     // see if we should send a stream now. Called at 50Hz
     bool        stream_trigger(enum streams stream_num);
 
-    // call to reset the timeout window for entering the cli
-    void reset_cli_timeout();
-
     bool is_high_bandwidth() { return chan == MAVLINK_COMM_0; }
     // return true if this channel has hardware flow control
     bool have_flow_control();
@@ -155,7 +155,7 @@ public:
     void send_power_status(void);
     void send_battery_status(const AP_BattMonitor &battery, const uint8_t instance) const;
     bool send_battery_status(const AP_BattMonitor &battery) const;
-    void send_distance_sensor(const RangeFinder &rangefinder, const uint8_t instance) const;
+    void send_distance_sensor(const AP_RangeFinder_Backend *sensor) const;
     bool send_distance_sensor(const RangeFinder &rangefinder) const;
     void send_distance_sensor_downward(const RangeFinder &rangefinder) const;
     void send_rangefinder_downward(const RangeFinder &rangefinder) const;
@@ -193,7 +193,10 @@ public:
 
     // send queued parameters if needed
     void send_queued_parameters(void);
-    
+
+    // push send_message() messages and queued statustext messages etc:
+    void retry_deferred();
+
     /*
       send a MAVLink message to all components with this vehicle's system id
       This is a no-op if no routes to components have been learned
@@ -228,6 +231,7 @@ protected:
     virtual class AP_Camera *get_camera() const = 0;
     virtual AP_ServoRelayEvents *get_servorelayevents() const = 0;
     virtual AP_GPS *get_gps() const = 0;
+    virtual AP_AdvancedFailsafe *get_advanced_failsafe() const { return nullptr; };
 
     bool            waypoint_receiving; // currently receiving
     // the following two variables are only here because of Tracker
@@ -271,6 +275,7 @@ protected:
     void handle_setup_signing(const mavlink_message_t *msg);
     uint8_t handle_preflight_reboot(const mavlink_command_long_t &packet, bool disable_overrides);
     MAV_RESULT handle_rc_bind(const mavlink_command_long_t &packet);
+    virtual MAV_RESULT handle_flight_termination(const mavlink_command_long_t &packet);
 
     void handle_device_op_read(mavlink_message_t *msg);
     void handle_device_op_write(mavlink_message_t *msg);
@@ -285,6 +290,16 @@ protected:
     MAV_RESULT handle_command_mag_cal(const mavlink_command_long_t &packet);
     MAV_RESULT handle_command_long_message(mavlink_command_long_t &packet);
     MAV_RESULT handle_command_camera(const mavlink_command_long_t &packet);
+
+    // vehicle-overridable message send function
+    virtual bool try_send_message(enum ap_message id);
+
+    // message sending functions:
+    bool try_send_compass_message(enum ap_message id);
+    bool try_send_mission_message(enum ap_message id);
+    bool try_send_camera_message(enum ap_message id);
+    bool try_send_gps_message(enum ap_message id);
+    void send_hwstatus();
 
 private:
 
@@ -323,9 +338,6 @@ private:
     ///
     uint16_t                    packet_drops;
 
-    // this allows us to detect the user wanting the CLI to start
-    uint8_t        crlf_count;
-
     // waypoints
     uint16_t        waypoint_dest_sysid; // where to send requests
     uint16_t        waypoint_dest_compid; // "
@@ -340,16 +352,13 @@ private:
     // number of extra ticks to add to slow things down for the radio
     uint8_t         stream_slowdown;
 
-    // millis value to calculate cli timeout relative to.
-    // exists so we can separate the cli entry time from the system start time
-    uint32_t _cli_timeout;
-
     // perf counters
     static AP_HAL::Util::perf_counter_t _perf_packet;
     static AP_HAL::Util::perf_counter_t _perf_update;
             
-    // deferred message handling
-    enum ap_message deferred_messages[MSG_RETRY_DEFERRED];
+    // deferred message handling.  We size the deferred_message
+    // ringbuffer so we can defer every message type
+    enum ap_message deferred_messages[MSG_LAST];
     uint8_t next_deferred_message;
     uint8_t num_deferred_messages;
 
@@ -402,12 +411,11 @@ private:
     // a vehicle can optionally snoop on messages for other systems
     static void (*msg_snoop)(const mavlink_message_t* msg);
 
-    // vehicle specific message send function
-    virtual bool try_send_message(enum ap_message id) = 0;
-
     virtual bool handle_guided_request(AP_Mission::Mission_Command &cmd) = 0;
     virtual void handle_change_alt_request(AP_Mission::Mission_Command &cmd) = 0;
     void handle_common_mission_message(mavlink_message_t *msg);
+
+    void push_deferred_messages();
 
     void lock_channel(mavlink_channel_t chan, bool lock);
 
@@ -452,18 +460,14 @@ public:
     virtual GCS_MAVLINK &chan(const uint8_t ofs) = 0;
     virtual const GCS_MAVLINK &chan(const uint8_t ofs) const = 0;
     virtual uint8_t num_gcs() const = 0;
-    void reset_cli_timeout();
     void send_message(enum ap_message id);
     void send_mission_item_reached_message(uint16_t mission_index);
     void send_home(const Location &home) const;
+    // push send_message() messages and queued statustext messages etc:
+    void retry_deferred();
     void data_stream_send();
     void update();
     virtual void setup_uarts(AP_SerialManager &serial_manager);
-    void handle_interactive_setup();
-
-    FUNCTOR_TYPEDEF(run_cli_fn, void, AP_HAL::UARTDriver*);
-    run_cli_fn _run_cli;
-    void set_run_cli_func(run_cli_fn run_cli) { _run_cli = run_cli; }
 
     /*
       set a dataflash pointer for logging
@@ -489,9 +493,6 @@ public:
 private:
 
     static GCS *_singleton;
-
-    virtual bool cli_enabled() const = 0;
-    virtual AP_HAL::BetterStream*  cliSerial() = 0;
 
     struct statustext_t {
         uint8_t                 bitmask;
