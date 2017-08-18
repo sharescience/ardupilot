@@ -168,7 +168,7 @@ void Copter::althold_run()
     	if(first_state){
     	    first_state = false;
     	}
-        DataFlash2::instance()->Log_Write_State_Cardinality(ALT_HOLD_MODE_STATE, althold_state);
+        DataFlash2::instance()->Log_Write_FSM(ALT_HOLD_MODE_STATE, althold_state);
         althold_state_last = althold_state;
     }
 }

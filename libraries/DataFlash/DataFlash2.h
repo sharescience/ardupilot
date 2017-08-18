@@ -30,7 +30,7 @@ public:
         return _instance;
     }
 
-    void Log_Write_State_Cardinality(uint16_t id, uint8_t state);
+    void Log_Write_FSM(uint16_t id, uint8_t state);
 
 private:
     static DataFlash2 *_instance;

@@ -571,7 +571,7 @@ void AP_MotorsMulticopter::output_logic()
     	if(first_state){
     	    first_state = false;
     	}
-        DataFlash2::instance()->Log_Write_State_Cardinality(MULTI_COPTER_MOTOR_SPOOL_MODE, _spool_mode);
+        DataFlash2::instance()->Log_Write_FSM(MULTI_COPTER_MOTOR_SPOOL_MODE, _spool_mode);
         spool_mode_last = _spool_mode;
     }
 }
