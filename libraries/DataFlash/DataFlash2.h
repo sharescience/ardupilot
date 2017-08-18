@@ -5,11 +5,11 @@
 #include <stdint.h>
 #include <AP_HAL/AP_HAL.h>
 
-#define STATE_CARDINALITY_NAME   "STAT"
-#define STATE_CARDINALITY_LABELS "TimeUS,id,stat"
-#define STATE_CARDINALITY_FMT    "QHB"
+#define FINITE_STATE_MACHINE_NAME   "STAT"
+#define FINITE_STATE_MACHINE_LABELS "TimeUS,id,stat"
+#define FINITE_STATE_MACHINE_FMT    "QHB"
 
-enum StateCardinalityID {
+enum FiniteStateMachineID {
 	MULTI_COPTER_MOTOR_SPOOL_MODE,
 	ALT_HOLD_MODE_STATE,
     ID_NUM,
