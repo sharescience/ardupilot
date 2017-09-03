@@ -20,6 +20,7 @@
 #include <AP_ServoRelayEvents/AP_ServoRelayEvents.h>
 #include <AP_Camera/AP_Camera.h>
 #include <AP_AdvancedFailsafe/AP_AdvancedFailsafe.h>
+#include <AP_Common/AP_FWVersion.h>
 
 // check if a message will fit in the payload space available
 #define HAVE_PAYLOAD_SPACE(chan, id) (comm_get_txspace(chan) >= GCS_MAVLINK::packet_overhead_chan(chan)+MAVLINK_MSG_ID_ ## id ## _LEN)
@@ -80,6 +81,7 @@ enum ap_message {
     MSG_BATTERY_STATUS,
     MSG_AOA_SSA,
     MSG_LANDING,
+    MSG_NAMED_FLOAT,
     MSG_LAST // MSG_LAST must be the last entry in this enum
 };
 
@@ -232,6 +234,8 @@ protected:
     virtual AP_ServoRelayEvents *get_servorelayevents() const = 0;
     virtual AP_GPS *get_gps() const = 0;
     virtual AP_AdvancedFailsafe *get_advanced_failsafe() const { return nullptr; };
+    virtual bool set_mode(uint8_t mode) = 0;
+    virtual const AP_FWVersion &get_fwver() const = 0;
 
     bool            waypoint_receiving; // currently receiving
     // the following two variables are only here because of Tracker
@@ -247,9 +251,8 @@ protected:
     AP_Int16        streamRates[NUM_STREAMS];
 
     void handle_request_data_stream(mavlink_message_t *msg, bool save);
-    FUNCTOR_TYPEDEF(set_mode_fn, bool, uint8_t);
-    void handle_set_mode(mavlink_message_t* msg, set_mode_fn set_mode);
 
+    void handle_set_mode(mavlink_message_t* msg);
     void handle_mission_request_list(AP_Mission &mission, mavlink_message_t *msg);
     void handle_mission_request(AP_Mission &mission, mavlink_message_t *msg);
     void handle_mission_clear_all(AP_Mission &mission, mavlink_message_t *msg);
@@ -258,9 +261,11 @@ protected:
     void handle_mission_write_partial_list(AP_Mission &mission, mavlink_message_t *msg);
     bool handle_mission_item(mavlink_message_t *msg, AP_Mission &mission);
 
-    void handle_param_set(mavlink_message_t *msg, DataFlash_Class *DataFlash);
+    void handle_common_param_message(mavlink_message_t *msg);
+    void handle_param_set(mavlink_message_t *msg);
     void handle_param_request_list(mavlink_message_t *msg);
     void handle_param_request_read(mavlink_message_t *msg);
+    virtual bool params_ready() const { return true; }
 
     void handle_common_gps_message(mavlink_message_t *msg);
     void handle_common_rally_message(mavlink_message_t *msg);
@@ -269,13 +274,18 @@ protected:
     void handle_common_camera_message(const mavlink_message_t *msg);
     void handle_gimbal_report(AP_Mount &mount, mavlink_message_t *msg) const;
     void handle_radio_status(mavlink_message_t *msg, DataFlash_Class &dataflash, bool log_radio);
-    void handle_serial_control(mavlink_message_t *msg, AP_GPS &gps);
+    void handle_serial_control(const mavlink_message_t *msg);
 
     void handle_common_message(mavlink_message_t *msg);
     void handle_setup_signing(const mavlink_message_t *msg);
     uint8_t handle_preflight_reboot(const mavlink_command_long_t &packet, bool disable_overrides);
     MAV_RESULT handle_rc_bind(const mavlink_command_long_t &packet);
     virtual MAV_RESULT handle_flight_termination(const mavlink_command_long_t &packet);
+
+    void handle_send_autopilot_version(const mavlink_message_t *msg);
+    MAV_RESULT handle_command_request_autopilot_capabilities(const mavlink_command_long_t &packet);
+
+    virtual void send_banner();
 
     void handle_device_op_read(mavlink_message_t *msg);
     void handle_device_op_write(mavlink_message_t *msg);
@@ -290,6 +300,7 @@ protected:
     MAV_RESULT handle_command_mag_cal(const mavlink_command_long_t &packet);
     MAV_RESULT handle_command_long_message(mavlink_command_long_t &packet);
     MAV_RESULT handle_command_camera(const mavlink_command_long_t &packet);
+    MAV_RESULT handle_command_do_send_banner(const mavlink_command_long_t &packet);
 
     // vehicle-overridable message send function
     virtual bool try_send_message(enum ap_message id);

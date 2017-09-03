@@ -132,6 +132,7 @@
 // Local modules
 #include "Parameters.h"
 #include "avoidance_adsb.h"
+#include "version.h"
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
 #include <SITL/SITL.h>
@@ -168,6 +169,19 @@ public:
     };
 
 private:
+
+    const AP_FWVersion fwver {
+        major: FW_MAJOR,
+        minor: FW_MINOR,
+        patch: FW_PATCH,
+        fw_type: FW_TYPE,
+#ifndef GIT_VERSION
+        fw_string: THISFIRMWARE
+#else
+        fw_string: THISFIRMWARE " (" GIT_VERSION ")"
+#endif
+    };
+
     // key aircraft parameters passed to multiple libraries
     AP_Vehicle::MultiCopter aparm;
 
@@ -983,7 +997,6 @@ private:
     void fence_send_mavlink_status(mavlink_channel_t chan);
     void update_sensor_status_flags(void);
     bool set_mode(control_mode_t mode, mode_reason_t reason);
-    bool gcs_set_mode(uint8_t mode) { return set_mode((control_mode_t)mode, MODE_REASON_GCS_COMMAND); }
     void update_flight_mode();
     void exit_mode(control_mode_t old_control_mode, control_mode_t new_control_mode);
     bool mode_requires_GPS(control_mode_t mode);
@@ -1031,6 +1044,8 @@ private:
     uint32_t perf_info_get_min_time();
     uint16_t perf_info_get_num_long_running();
     uint32_t perf_info_get_num_dropped();
+    uint32_t perf_info_get_avg_time();
+    uint32_t perf_info_get_stddev_time();
     Vector3f pv_location_to_vector(const Location& loc);
     float pv_alt_above_origin(float alt_above_home_cm);
     float pv_alt_above_home(float alt_above_origin_cm);

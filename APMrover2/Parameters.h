@@ -27,7 +27,7 @@ public:
         // Misc
         //
         k_param_log_bitmask_old = 10,  // unused
-        k_param_num_resets,
+        k_param_num_resets_old,         // unused
         k_param_reset_switch_chan,
         k_param_initial_mode,
         k_param_scheduler,
@@ -124,8 +124,8 @@ public:
         k_param_rc_8_old,
 
         // throttle control
-        k_param_throttle_min = 170,
-        k_param_throttle_max,
+        k_param_throttle_min_old = 170, // unused
+        k_param_throttle_max_old,       // unused
         k_param_throttle_cruise,
         k_param_throttle_slewrate_old,  // unused
         k_param_throttle_reduction,     // unused
@@ -160,7 +160,7 @@ public:
         k_param_mode4,
         k_param_mode5,
         k_param_mode6,
-        k_param_learn_channel,
+        k_param_aux_channel,
 
         //
         // 220: Waypoint data
@@ -212,7 +212,6 @@ public:
     // Misc
     //
     AP_Int32    log_bitmask;
-    AP_Int16    num_resets;
     AP_Int8     reset_switch_chan;
     AP_Int8     initial_mode;
 
@@ -238,8 +237,6 @@ public:
 
     // Throttle
     //
-    AP_Int8     throttle_min;
-    AP_Int8     throttle_max;
     AP_Int8     throttle_cruise;
     AP_Int8     skid_steer_in;
 
@@ -267,7 +264,7 @@ public:
     AP_Int8     mode4;
     AP_Int8     mode5;
     AP_Int8     mode6;
-    AP_Int8     learn_channel;
+    AP_Int8     aux_channel;
 
     // Waypoints
     //

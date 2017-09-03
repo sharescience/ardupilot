@@ -20,7 +20,7 @@
 #include <AP_Vehicle/AP_Vehicle.h>
 #include <AP_RangeFinder/RangeFinder_Backend.h>
 
-#include "ap_version.h"
+#include "AP_Common/AP_FWVersion.h"
 #include "GCS.h"
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
@@ -1293,7 +1293,7 @@ void GCS_MAVLINK::send_battery2(const AP_BattMonitor &battery)
 /*
   handle a SET_MODE MAVLink message
  */
-void GCS_MAVLINK::handle_set_mode(mavlink_message_t* msg, set_mode_fn set_mode)
+void GCS_MAVLINK::handle_set_mode(mavlink_message_t* msg)
 {
     uint8_t result = MAV_RESULT_FAILED;
     mavlink_set_mode_t packet;
@@ -1686,14 +1686,24 @@ void GCS_MAVLINK::handle_statustext(mavlink_message_t *msg)
     if (df == nullptr) {
         return;
     }
-    // ignore any statustext messages not from our GCS:
-    if (msg->sysid != sysid_my_gcs()) {
-        return;
-    }
+
     mavlink_statustext_t packet;
     mavlink_msg_statustext_decode(msg, &packet);
-    char text[MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN+1+4] = { 'G','C','S',':'};
-    memcpy(&text[4], packet.text, MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN);
+    const uint8_t max_prefix_len = 20;
+    const uint8_t text_len = MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN+1+max_prefix_len;
+    char text[text_len] = { 'G','C','S',':'};
+    uint8_t offset = strlen(text);
+
+    if (msg->sysid != sysid_my_gcs()) {
+        offset = hal.util->snprintf(text,
+                                    max_prefix_len,
+                                    "SRC=%u/%u:",
+                                    msg->sysid,
+                                    msg->compid);
+    }
+
+    memcpy(&text[offset], packet.text, MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN);
+
     df->Log_Write_Message(text);
 }
 
@@ -1775,9 +1785,15 @@ void GCS_MAVLINK::handle_common_message(mavlink_message_t *msg)
     case MAVLINK_MSG_ID_SETUP_SIGNING:
         handle_setup_signing(msg);
         break;
+
+    case MAVLINK_MSG_ID_PARAM_REQUEST_LIST:
+        /* fall through */
+    case MAVLINK_MSG_ID_PARAM_SET:
+        /* fall through */
     case MAVLINK_MSG_ID_PARAM_REQUEST_READ:
-        handle_param_request_read(msg);
+        handle_common_param_message(msg);
         break;
+
     case MAVLINK_MSG_ID_DEVICE_OP_READ:
         handle_device_op_read(msg);
         break;
@@ -1807,6 +1823,14 @@ void GCS_MAVLINK::handle_common_message(mavlink_message_t *msg)
         handle_common_camera_message(msg);
         break;
 
+    case MAVLINK_MSG_ID_SET_MODE:
+        handle_set_mode(msg);
+        break;
+
+    case MAVLINK_MSG_ID_AUTOPILOT_VERSION_REQUEST:
+        handle_send_autopilot_version(msg);
+        break;
+
     case MAVLINK_MSG_ID_MISSION_WRITE_PARTIAL_LIST:
         /* fall through */
     case MAVLINK_MSG_ID_MISSION_REQUEST_LIST:
@@ -1829,6 +1853,10 @@ void GCS_MAVLINK::handle_common_message(mavlink_message_t *msg)
         handle_common_mission_message(msg);
         break;
 
+    case MAVLINK_MSG_ID_SERIAL_CONTROL:
+        handle_serial_control(msg);
+        break;
+
     case MAVLINK_MSG_ID_GPS_RTCM_DATA:
         /* fall through */
     case MAVLINK_MSG_ID_GPS_INPUT:
@@ -1841,6 +1869,16 @@ void GCS_MAVLINK::handle_common_message(mavlink_message_t *msg)
 
     case MAVLINK_MSG_ID_STATUSTEXT:
         handle_statustext(msg);
+        break;
+
+    case MAVLINK_MSG_ID_LED_CONTROL:
+        // send message to Notify
+        AP_Notify::handle_led_control(msg);
+        break;
+
+    case MAVLINK_MSG_ID_PLAY_TUNE:
+        // send message to Notify
+        AP_Notify::handle_play_tune(msg);
         break;
 
     case MAVLINK_MSG_ID_RALLY_POINT:
@@ -1916,6 +1954,30 @@ void GCS_MAVLINK::handle_common_mission_message(mavlink_message_t *msg)
     }
 }
 
+void GCS_MAVLINK::handle_send_autopilot_version(const mavlink_message_t *msg)
+{
+    const AP_FWVersion &fwver = get_fwver();
+    send_autopilot_version(fwver.major, fwver.minor, fwver.patch, fwver.fw_type);
+}
+
+void GCS_MAVLINK::send_banner()
+{
+    // mark the firmware version in the tlog
+    const AP_FWVersion &fwver = get_fwver();
+    send_text(MAV_SEVERITY_INFO, fwver.fw_string);
+
+#if defined(PX4_GIT_VERSION) && defined(NUTTX_GIT_VERSION)
+    send_text(MAV_SEVERITY_INFO, "PX4: " PX4_GIT_VERSION " NuttX: " NUTTX_GIT_VERSION);
+#endif
+
+    // send system ID if we can
+    char sysid[40];
+    if (hal.util->get_system_id(sysid)) {
+        send_text(MAV_SEVERITY_INFO, sysid);
+    }
+}
+
+
 MAV_RESULT GCS_MAVLINK::handle_command_preflight_set_sensor_offsets(const mavlink_command_long_t &packet)
 {
     Compass *compass = get_compass();
@@ -1947,11 +2009,33 @@ MAV_RESULT GCS_MAVLINK::handle_command_mag_cal(const mavlink_command_long_t &pac
     return compass->handle_mag_cal_command(packet);
 }
 
+MAV_RESULT GCS_MAVLINK::handle_command_request_autopilot_capabilities(const mavlink_command_long_t &packet)
+{
+    if (!is_equal(packet.param1,1.0f)) {
+        return MAV_RESULT_FAILED;
+    }
+
+    const AP_FWVersion &fwver = get_fwver();
+    send_autopilot_version(fwver.major, fwver.minor, fwver.patch, fwver.fw_type);
+    return MAV_RESULT_ACCEPTED;
+}
+
+
+MAV_RESULT GCS_MAVLINK::handle_command_do_send_banner(const mavlink_command_long_t &packet)
+{
+    send_banner();
+    return MAV_RESULT_ACCEPTED;
+}
+
 MAV_RESULT GCS_MAVLINK::handle_command_long_message(mavlink_command_long_t &packet)
 {
     MAV_RESULT result = MAV_RESULT_FAILED;
 
     switch (packet.command) {
+
+    case MAV_CMD_DO_SEND_BANNER:
+        result = handle_command_do_send_banner(packet);
+        break;
 
     case MAV_CMD_DO_START_MAG_CAL:
     case MAV_CMD_DO_ACCEPT_MAG_CAL:
@@ -1971,6 +2055,11 @@ MAV_RESULT GCS_MAVLINK::handle_command_long_message(mavlink_command_long_t &pack
     case MAV_CMD_DO_SET_CAM_TRIGG_DIST:
         result = handle_command_camera(packet);
         break;
+
+    case MAV_CMD_REQUEST_AUTOPILOT_CAPABILITIES: {
+        result = handle_command_request_autopilot_capabilities(packet);
+        break;
+    }
 
     case MAV_CMD_PREFLIGHT_SET_SENSOR_OFFSETS: {
         result = handle_command_preflight_set_sensor_offsets(packet);

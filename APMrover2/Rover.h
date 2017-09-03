@@ -71,6 +71,7 @@
 #include <Filter/AverageFilter.h>                   // Mode Filter from Filter library
 #include <Filter/Butter.h>                          // Filter library - butterworth filter
 #include <Filter/Filter.h>                          // Filter library
+#include <Filter/LowPassFilter.h>
 #include <Filter/ModeFilter.h>                      // Mode Filter from Filter library
 #include <RC_Channel/RC_Channel.h>                  // RC Channel Library
 #include <StorageManager/StorageManager.h>
@@ -91,6 +92,7 @@
 #include "Parameters.h"
 #include "GCS_Mavlink.h"
 #include "GCS_Rover.h"
+#include "version.h"
 
 class Rover : public AP_HAL::HAL::Callbacks {
 public:
@@ -118,6 +120,18 @@ public:
 
 private:
 
+    const AP_FWVersion fwver {
+        major: FW_MAJOR,
+        minor: FW_MINOR,
+        patch: FW_PATCH,
+        fw_type: FW_TYPE,
+#ifndef GIT_VERSION
+        fw_string: THISFIRMWARE
+#else
+        fw_string: THISFIRMWARE " (" GIT_VERSION ")"
+#endif
+    };
+
     // must be the first AP_Param variable declared to ensure its
     // constructor runs before the constructors of the other AP_Param
     // variables
@@ -144,7 +158,7 @@ private:
     // primary control channels
     RC_Channel *channel_steer;
     RC_Channel *channel_throttle;
-    RC_Channel *channel_learn;
+    RC_Channel *channel_aux;
 
     DataFlash_Class DataFlash;
 
@@ -276,11 +290,8 @@ private:
     // The amount current ground speed is below min ground speed.  meters per second
     float ground_speed;
 
-    // CH7 control
-    // Used to track the CH7 toggle state.
-    // When CH7 goes LOW PWM from HIGH PWM, this value will have been set true
-    // This allows advanced functionality to know when to execute
-    bool ch7_flag;
+    // CH7 auxiliary switches last known position
+    aux_switch_pos aux_ch7;
 
     // Battery Sensors
     AP_BattMonitor battery;
@@ -380,9 +391,15 @@ private:
     ModeManual mode_manual;
     ModeGuided mode_guided;
     ModeAuto mode_auto;
-    ModeLearning mode_learning;
     ModeSteering mode_steering;
     ModeRTL mode_rtl;
+
+    // cruise throttle and speed learning
+    struct {
+        bool learning;
+        LowPassFilterFloat speed_filt = LowPassFilterFloat(2.0f);
+        LowPassFilterFloat throttle_filt = LowPassFilterFloat(2.0f);
+    } cruise_learn;
 
 private:
 
@@ -442,18 +459,24 @@ private:
 
     // compat.cpp
     void delay(uint32_t ms);
-    void mavlink_delay(uint32_t ms);
 
     // control_modes.cpp
     Mode *control_mode_from_num(enum mode num);
     void read_control_switch();
     uint8_t readSwitch(void);
     void reset_control_switch();
-    void read_trim_switch();
+    aux_switch_pos read_aux_switch_pos();
+    void init_aux_switch();
+    void read_aux_switch();
     bool motor_active();
 
     // crash_check.cpp
     void crash_check();
+
+    // cruise_learn.cpp
+    void cruise_learn_start();
+    void cruise_learn_update();
+    void cruise_learn_complete();
 
     // events.cpp
     void update_events(void);
@@ -511,7 +534,6 @@ private:
     void rudder_arm_disarm_check();
     void read_radio();
     void control_failsafe(uint16_t pwm);
-    bool throttle_failsafe_active();
     void trim_control_surfaces();
     void trim_radio();
 
@@ -541,7 +563,7 @@ private:
     void init_ardupilot();
     void startup_ground(void);
     void set_reverse(bool reverse);
-    bool set_mode(Mode &mode, mode_reason_t reason);
+    bool set_mode(Mode &new_mode, mode_reason_t reason);
     bool mavlink_set_mode(uint8_t mode);
     void startup_INS_ground(void);
     void update_notify();

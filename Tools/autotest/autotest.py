@@ -24,6 +24,18 @@ from pysim import util
 from pymavlink import mavutil
 from pymavlink.generator import mavtemplate
 
+def buildlogs_dirpath():
+    return os.getenv("BUILDLOGS", util.reltopdir("../buildlogs"))
+
+def buildlogs_path(path):
+    '''return a string representing path in the buildlogs directory'''
+    bits = [buildlogs_dirpath()]
+    if isinstance(path, list):
+        bits.extend(path)
+    else:
+        bits.append(path)
+    return os.path.join(*bits)
+
 def get_default_params(atype, binary):
     """Get default parameters."""
 
@@ -47,7 +59,7 @@ def get_default_params(atype, binary):
         mavproxy = util.start_MAVProxy_SITL(atype)
         idx = mavproxy.expect('Saved [0-9]+ parameters to (\S+)')
     parmfile = mavproxy.match.group(1)
-    dest = util.reltopdir('../buildlogs/%s-defaults.parm' % atype)
+    dest = buildlogs_path('%s-defaults.parm' % atype)
     shutil.copy(parmfile, dest)
     util.pexpect_close(mavproxy)
     util.pexpect_close(sitl)
@@ -117,7 +129,7 @@ def build_parameters():
 
 def convert_gpx():
     """Convert any tlog files to GPX and KML."""
-    mavlog = glob.glob(util.reltopdir("../buildlogs/*.tlog"))
+    mavlog = glob.glob(buildlogs_path("*.tlog"))
     for m in mavlog:
         util.run_cmd(util.reltopdir("modules/mavlink/pymavlink/tools/mavtogpx.py") + " --nofixcheck " + m)
         gpx = m + '.gpx'
@@ -131,7 +143,7 @@ def convert_gpx():
 def test_prerequisites():
     """Check we have the right directories and tools to run tests."""
     print("Testing prerequisites")
-    util.mkdir_p(util.reltopdir('../buildlogs'))
+    util.mkdir_p(buildlogs_dirpath())
     return True
 
 
@@ -222,23 +234,33 @@ def run_step(step):
         vehicle = step[8:]
         return get_default_params(vehicle, binary)
 
+    fly_opts = {
+        "viewerip": opts.viewerip,
+        "use_map": opts.map,
+        "valgrind": opts.valgrind,
+        "gdb": opts.gdb,
+        "gdbserver": opts.gdbserver,
+    }
+    if opts.speedup is not None:
+        fly_opts.speedup = opts.speedup
+
     if step == 'fly.ArduCopter':
-        return arducopter.fly_ArduCopter(binary, viewerip=opts.viewerip, use_map=opts.map, valgrind=opts.valgrind, gdb=opts.gdb, frame=opts.frame)
+        return arducopter.fly_ArduCopter(binary, frame=opts.frame, **fly_opts)
 
     if step == 'fly.CopterAVC':
-        return arducopter.fly_CopterAVC(binary, viewerip=opts.viewerip, use_map=opts.map, valgrind=opts.valgrind, gdb=opts.gdb, frame=opts.frame)
+        return arducopter.fly_CopterAVC(binary, **fly_opts)
 
     if step == 'fly.ArduPlane':
-        return arduplane.fly_ArduPlane(binary, viewerip=opts.viewerip, use_map=opts.map, valgrind=opts.valgrind, gdb=opts.gdb)
+        return arduplane.fly_ArduPlane(binary, **fly_opts)
 
     if step == 'fly.QuadPlane':
-        return quadplane.fly_QuadPlane(binary, viewerip=opts.viewerip, use_map=opts.map, valgrind=opts.valgrind, gdb=opts.gdb)
+        return quadplane.fly_QuadPlane(binary, **fly_opts)
 
     if step == 'drive.APMrover2':
-        return apmrover2.drive_APMrover2(binary, viewerip=opts.viewerip, use_map=opts.map, valgrind=opts.valgrind, gdb=opts.gdb, frame=opts.frame)
-    
+        return apmrover2.drive_APMrover2(binary, frame=opts.frame, **fly_opts)
+
     if step == 'dive.ArduSub':
-        return ardusub.dive_ArduSub(binary, viewerip=opts.viewerip, use_map=opts.map, valgrind=opts.valgrind, gdb=opts.gdb)
+        return ardusub.dive_ArduSub(binary, **fly_opts)
 
     if step == 'build.All':
         return build_all()
@@ -299,12 +321,12 @@ class TestResults(object):
 
     def addglob(self, name, pattern):
         """Add a set of files."""
-        for f in glob.glob(util.reltopdir('../buildlogs/%s' % pattern)):
+        for f in glob.glob(buildlogs_path(pattern)):
             self.addfile(name, os.path.basename(f))
 
     def addglobimage(self, name, pattern):
         """Add a set of images."""
-        for f in glob.glob(util.reltopdir('../buildlogs/%s' % pattern)):
+        for f in glob.glob(buildlogs_path(pattern)):
             self.addimage(name, os.path.basename(f))
 
 
@@ -313,11 +335,11 @@ def write_webresults(results_to_write):
     t = mavtemplate.MAVTemplate()
     for h in glob.glob(util.reltopdir('Tools/autotest/web/*.html')):
         html = util.loadfile(h)
-        f = open(util.reltopdir("../buildlogs/%s" % os.path.basename(h)), mode='w')
+        f = open(buildlogs_path(os.path.basename(h)), mode='w')
         t.write(f, html, results_to_write)
         f.close()
     for f in glob.glob(util.reltopdir('Tools/autotest/web/*.png')):
-        shutil.copy(f, util.reltopdir('../buildlogs/%s' % os.path.basename(f)))
+        shutil.copy(f, buildlogs_path(os.path.basename(f)))
 
 
 def write_fullresults():
@@ -328,40 +350,31 @@ def write_fullresults():
     results.addglob('DataFlash Log', '*-log.bin')
     results.addglob("MAVLink log", '*.tlog')
     results.addglob("GPX track", '*.gpx')
-    results.addfile('ArduPlane build log', 'ArduPlane.txt')
-    results.addfile('ArduPlane code size', 'ArduPlane.sizes.txt')
-    results.addfile('ArduPlane stack sizes', 'ArduPlane.framesizes.txt')
-    results.addfile('ArduPlane defaults', 'default_params/ArduPlane-defaults.parm')
-    results.addglob("ArduPlane log", 'ArduPlane-*.BIN')
-    results.addglob("ArduPlane core", 'ArduPlane.core')
-    results.addglob("ArduPlane ELF", 'ArduPlane.elf')
-    results.addfile('ArduCopter build log', 'ArduCopter.txt')
-    results.addfile('ArduCopter code size', 'ArduCopter.sizes.txt')
-    results.addfile('ArduCopter stack sizes', 'ArduCopter.framesizes.txt')
-    results.addfile('ArduCopter defaults', 'default_params/ArduCopter-defaults.parm')
-    results.addglob("ArduCopter log", 'ArduCopter-*.BIN')
-    results.addglob("ArduCopter core", 'ArduCopter.core')
-    results.addglob("ArduCopter elf", 'ArduCopter.elf')
+
+    # results common to all vehicles:
+    vehicle_files = [ ('{vehicle} build log', '{vehicle}.txt'),
+                      ('{vehicle} code size', '{vehicle}.sizes.txt'),
+                      ('{vehicle} stack sizes', '{vehicle}.framesizes.txt'),
+                      ('{vehicle} defaults', 'default_params/{vehicle}-defaults.parm'),
+                      ('{vehicle} core', '{vehicle}.core'),
+                      ('{vehicle} ELF', '{vehicle}.elf'),
+    ]
+    vehicle_globs = [('{vehicle} log', '{vehicle}-*.BIN'),
+    ]
+    for vehicle in 'ArduPlane','ArduCopter','APMrover2','AntennaTracker', 'ArduSub':
+        subs = { 'vehicle': vehicle }
+        for vehicle_file in vehicle_files:
+            description = vehicle_file[0].format(**subs)
+            filename = vehicle_file[1].format(**subs)
+            results.addfile(description, filename)
+        for vehicle_glob in vehicle_globs:
+            description = vehicle_glob[0].format(**subs)
+            glob = vehicle_glob[1].format(**subs)
+            results.addglob(description, glob)
+
     results.addglob("CopterAVC log", 'CopterAVC-*.BIN')
-    results.addglob("CopterAVC core", 'CopterAVC.core')
-    results.addfile('APMrover2 build log', 'APMrover2.txt')
-    results.addfile('APMrover2 code size', 'APMrover2.sizes.txt')
-    results.addfile('APMrover2 stack sizes', 'APMrover2.framesizes.txt')
-    results.addfile('APMrover2 defaults', 'default_params/APMrover2-defaults.parm')
-    results.addglob("APMrover2 log", 'APMrover2-*.BIN')
-    results.addglob("APMrover2 core", 'APMrover2.core')
-    results.addglob("APMrover2 ELF", 'APMrover2.elf')
-    results.addfile('AntennaTracker build log', 'AntennaTracker.txt')
-    results.addfile('AntennaTracker code size', 'AntennaTracker.sizes.txt')
-    results.addfile('AntennaTracker stack sizes', 'AntennaTracker.framesizes.txt')
-    results.addglob("AntennaTracker ELF", 'AntennaTracker.elf')
-    results.addfile('ArduSub build log', 'ArduSub.txt')
-    results.addfile('ArduSub code size', 'ArduSub.sizes.txt')
-    results.addfile('ArduSub stack sizes', 'ArduSub.framesizes.txt')
-    results.addfile('ArduSub defaults', 'default_params/ArduSub-defaults.parm')
-    results.addglob("ArduSub log", 'ArduSub-*.BIN')
-    results.addglob("ArduSub core", 'ArduSub.core')
-    results.addglob("ArduSub ELF", 'ArduSub.elf')
+    results.addfile("CopterAVC core", 'CopterAVC.core')
+
     results.addglob('APM:Libraries documentation', 'docs/libraries/index.html')
     results.addglob('APM:Plane documentation', 'docs/ArduPlane/index.html')
     results.addglob('APM:Copter documentation', 'docs/ArduCopter/index.html')
@@ -383,16 +396,17 @@ def check_logs(step):
     logs = glob.glob("logs/*.BIN")
     for log in logs:
         bname = os.path.basename(log)
-        newname = util.reltopdir("../buildlogs/%s-%s" % (vehicle, bname))
+        newname = buildlogs_path("%s-%s" % (vehicle, bname))
         print("Renaming %s to %s" % (log, newname))
-        os.rename(log, newname)
+        shutil.move(log, newname)
 
     corefile = "core"
     if os.path.exists(corefile):
-        newname = util.reltopdir("../buildlogs/%s.core" % vehicle)
+        newname = buildlogs_path("%s.core" % vehicle)
         print("Renaming %s to %s" % (corefile, newname))
-        os.rename(corefile, newname)
-        util.run_cmd('/bin/cp A*/A*.elf ../buildlogs', directory=util.reltopdir('.'))
+        shutil.move(corefile, newname)
+        util.run_cmd('/bin/cp A*/A*.elf %s' % buildlogs_dirpath(),
+                     directory=util.reltopdir('.'))
 
 def run_tests(steps):
     """Run a list of steps."""
@@ -444,11 +458,13 @@ if __name__ == "__main__":
     parser.add_option("--map", action='store_true', default=False, help='show map')
     parser.add_option("--experimental", default=False, action='store_true', help='enable experimental tests')
     parser.add_option("--timeout", default=3000, type='int', help='maximum runtime in seconds')
+    parser.add_option("--speedup", default=None, type='int', help='speedup to run the simulations at')
     parser.add_option("--valgrind", default=False, action='store_true', help='run ArduPilot binaries under valgrind')
     parser.add_option("--gdb", default=False, action='store_true', help='run ArduPilot binaries under gdb')
     parser.add_option("--debug", default=False, action='store_true', help='make built binaries debug binaries')
     parser.add_option("-j", default=None, type='int', help='build CPUs')
     parser.add_option("--frame", type='string', default=None, help='specify frame type')
+    parser.add_option("--gdbserver", default=False, action='store_true', help='run ArduPilot binaries under gdbserver')
 
     opts, args = parser.parse_args()
 
@@ -497,9 +513,10 @@ if __name__ == "__main__":
             print(step)
         sys.exit(0)
 
-    util.mkdir_p(util.reltopdir('../buildlogs'))
+    util.mkdir_p(buildlogs_dirpath())
 
-    lckfile = util.reltopdir('../buildlogs/autotest.lck')
+    lckfile = buildlogs_path('autotest.lck')
+    print("lckfile=%s" % repr(lckfile))
     lck = util.lock_file(lckfile)
 
     if lck is None:
