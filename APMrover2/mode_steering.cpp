@@ -4,13 +4,13 @@
 void ModeSteering::update()
 {
     // convert pilot throttle input to desired speed (up to twice the cruise speed)
-    float target_speed = channel_throttle->get_control_in() * 0.01f * calc_speed_max(g.speed_cruise, g.throttle_cruise);
+    float target_speed = channel_throttle->get_control_in() * 0.01f * calc_speed_max(g.speed_cruise, g.throttle_cruise * 0.01f);
 
     // get speed forward
     float speed;
     if (!attitude_control.get_forward_speed(speed)) {
         // no valid speed so stop
-        g2.motors.set_throttle(g.throttle_min.get());
+        g2.motors.set_throttle(0.0f);
         g2.motors.set_steering(0.0f);
         lateral_acceleration = 0.0f;
         return;

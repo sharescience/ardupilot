@@ -160,4 +160,15 @@ void Copter::althold_run()
         pos_control->update_z_controller();
         break;
     }
+
+    // Log write alt_hold state
+    static AltHoldModeState althold_state_last = althold_state;
+    static bool first_state = true;
+    if(althold_state_last != althold_state || first_state){
+    	if(first_state){
+    	    first_state = false;
+    	}
+        DataFlash2::instance()->Log_Write_FSM(ALT_HOLD_MODE_STATE, althold_state);
+        althold_state_last = althold_state;
+    }
 }

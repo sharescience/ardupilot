@@ -110,6 +110,7 @@
 #include "Parameters.h"
 #include "avoidance_adsb.h"
 #include "AP_Arming.h"
+#include "version.h"
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
 #include <SITL/SITL.h>
@@ -156,6 +157,19 @@ public:
     void loop() override;
 
 private:
+
+    const AP_FWVersion fwver {
+        major: FW_MAJOR,
+        minor: FW_MINOR,
+        patch: FW_PATCH,
+        fw_type: FW_TYPE,
+#ifndef GIT_VERSION
+        fw_string: THISFIRMWARE
+#else
+        fw_string: THISFIRMWARE " (" GIT_VERSION ")"
+#endif
+    };
+
     // key aircraft parameters passed to multiple libraries
     AP_Vehicle::FixedWing aparm;
 
@@ -963,7 +977,6 @@ private:
     void startup_ground(void);
     enum FlightMode get_previous_mode();
     void set_mode(enum FlightMode mode, mode_reason_t reason);
-    bool mavlink_set_mode(uint8_t mode);
     void exit_mode(enum FlightMode mode);
     void check_long_failsafe();
     void check_short_failsafe();

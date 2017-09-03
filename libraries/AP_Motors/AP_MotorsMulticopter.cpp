@@ -21,6 +21,7 @@
 
 #include "AP_MotorsMulticopter.h"
 #include <AP_HAL/AP_HAL.h>
+#include <DataFlash/DataFlash2.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -561,6 +562,17 @@ void AP_MotorsMulticopter::output_logic()
                 _spool_mode = SPIN_WHEN_ARMED;
             }
             break;
+    }
+
+    // Log write _spool_mode state
+    static spool_up_down_mode spool_mode_last = _spool_mode;
+    static bool first_state = true;
+    if(spool_mode_last != _spool_mode || first_state){
+    	if(first_state){
+    	    first_state = false;
+    	}
+        DataFlash2::instance()->Log_Write_FSM(MULTI_COPTER_MOTOR_SPOOL_MODE, _spool_mode);
+        spool_mode_last = _spool_mode;
     }
 }
 

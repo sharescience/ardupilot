@@ -23,7 +23,7 @@ const AP_Param::GroupInfo AP_MotorsUGV::var_info[] = {
     // @Param: PWM_TYPE
     // @DisplayName: Output PWM type
     // @Description: This selects the output PWM type as regular PWM, OneShot, Brushed motor support using PWM (duty cycle) with separated direction signal, Brushed motor support with separate throttle and direction PWM (duty cyle)
-    // @Values: 0:Normal,1:OneShot,2:OneShot125,3:Brushed,4:BrushedBiPolar
+    // @Values: 0:Normal,1:OneShot,2:OneShot125,3:BrushedWithRelay,4:BrushedBiPolar
     // @User: Advanced
     // @RebootRequired: True
     AP_GROUPINFO("PWM_TYPE", 1, AP_MotorsUGV, _pwm_type, PWM_TYPE_NORMAL),
@@ -54,6 +54,24 @@ const AP_Param::GroupInfo AP_MotorsUGV::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("SLEWRATE", 4, AP_MotorsUGV, _slew_rate, 100),
 
+    // @Param: THR_MIN
+    // @DisplayName: Throttle minimum
+    // @Description: Throttle minimum percentage the autopilot will apply. This is mostly useful for rovers with internal combustion motors, to prevent the motor from cutting out in auto mode.
+    // @Units: %
+    // @Range: 0 20
+    // @Increment: 1
+    // @User: Standard
+    AP_GROUPINFO("THR_MIN", 5, AP_MotorsUGV, _throttle_min, 0),
+
+    // @Param: THR_MAX
+    // @DisplayName: Throttle maximum
+    // @Description: Throttle maximum percentage the autopilot will apply. This can be used to prevent overheating an ESC or motor on an electric rover
+    // @Units: %
+    // @Range: 30 100
+    // @Increment: 1
+    // @User: Standard
+    AP_GROUPINFO("THR_MAX", 6, AP_MotorsUGV, _throttle_max, 100),
+
     AP_GROUPEND
 };
 
@@ -75,6 +93,72 @@ void AP_MotorsUGV::init()
     setup_safety_output();
 }
 
+// setup output in case of main CPU failure
+void AP_MotorsUGV::setup_safety_output()
+{
+    if (_pwm_type == PWM_TYPE_BRUSHED_WITH_RELAY) {
+        // set trim to min to set duty cycle range (0 - 100%) to servo range
+        SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttle);
+        SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttleLeft);
+        SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttleRight);
+    }
+
+    if (_disarm_disable_pwm) {
+        // throttle channels output zero pwm (i.e. no signal)
+        SRV_Channels::set_safety_limit(SRV_Channel::k_throttle, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
+        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleLeft, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
+        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleRight, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
+    } else {
+        // throttle channels output trim values (because rovers will go backwards if set to MIN)
+        SRV_Channels::set_safety_limit(SRV_Channel::k_throttle, SRV_Channel::SRV_CHANNEL_LIMIT_TRIM);
+        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleLeft, SRV_Channel::SRV_CHANNEL_LIMIT_TRIM);
+        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleRight, SRV_Channel::SRV_CHANNEL_LIMIT_TRIM);
+    }
+
+    // stop sending pwm if main CPU fails
+    SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttle, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
+    SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttleLeft, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
+    SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttleRight, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
+}
+
+// setup servo output ranges
+void AP_MotorsUGV::setup_servo_output()
+{
+    // k_steering are limited to -45;45 degree
+    SRV_Channels::set_angle(SRV_Channel::k_steering, SERVO_MAX);
+
+    // k_throttle are in power percent so -100 ... 100
+    SRV_Channels::set_angle(SRV_Channel::k_throttle, 100);
+
+    // skid steering left/right throttle as -1000 to 1000 values
+    SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  1000);
+    SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 1000);
+}
+
+// set steering as a value from -4500 to +4500
+void AP_MotorsUGV::set_steering(float steering)
+{
+    _steering = constrain_float(steering, -4500.0f, 4500.0f);
+}
+
+// set throttle as a value from -100 to 100
+void AP_MotorsUGV::set_throttle(float throttle)
+{
+    // sanity check throttle min and max
+    _throttle_min = constrain_int16(_throttle_min, 0, 20);
+    _throttle_max = constrain_int16(_throttle_max, 30, 100);
+
+    // check throttle is between -_throttle_max ~ +_throttle_max but outside -throttle_min ~ +throttle_min
+    _throttle = constrain_float(throttle, -_throttle_max, _throttle_max);
+    if ((_throttle_min > 0) && (fabsf(_throttle) < _throttle_min)) {
+        if (is_negative(_throttle)) {
+            _throttle = -_throttle_min;
+        } else {
+            _throttle = _throttle_min;
+        }
+    }
+}
+
 /*
   work out if skid steering is available
  */
@@ -93,10 +177,6 @@ void AP_MotorsUGV::output(bool armed, float dt)
     if (!hal.util->get_soft_armed()) {
         armed = false;
     }
-
-    // ensure steering and throttle are within limits
-    _steering = constrain_float(_steering, -4500.0f, 4500.0f);
-    _throttle = constrain_float(_throttle, -100.0f, 100.0f);
 
     slew_limit_throttle(dt);
 
@@ -126,7 +206,7 @@ void AP_MotorsUGV::output_regular(bool armed, float steering, float throttle)
     // output to throttle channels
     if (armed) {
         // handle armed case
-        SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
+        output_throttle(SRV_Channel::k_throttle, throttle);
     } else {
         // handle disarmed case
         if (_disarm_disable_pwm) {
@@ -220,20 +300,29 @@ void AP_MotorsUGV::output_throttle(SRV_Channel::Aux_servo_function_t function, f
     throttle = constrain_float(throttle, -100.0f, 100.0f);
 
     // set relay if necessary
-    if (_pwm_type == PWM_TYPE_BRUSHED) {
+    if (_pwm_type == PWM_TYPE_BRUSHED_WITH_RELAY) {
+        // find the output channel, if not found return
+        const SRV_Channel *out_chan = SRV_Channels::get_channel_for(function);
+        if (out_chan == nullptr) {
+            return;
+        }
+        const int8_t reverse_multiplier = out_chan->get_reversed() ? -1 : 1;
+        bool relay_high = is_negative(reverse_multiplier * throttle);
+
         switch (function) {
             case SRV_Channel::k_throttle:
             case SRV_Channel::k_throttleLeft:
-                _relayEvents.do_set_relay(0, is_negative(throttle));
+                _relayEvents.do_set_relay(0, relay_high);
                 break;
             case SRV_Channel::k_throttleRight:
-                _relayEvents.do_set_relay(1, is_negative(throttle));
+                _relayEvents.do_set_relay(1, relay_high);
                 break;
             default:
                 // do nothing
                 break;
         }
-        throttle = fabsf(throttle);
+        // invert the output to always have positive value calculated by calc_pwm
+        throttle = reverse_multiplier * fabsf(throttle);
     }
 
     // output to servo channel
@@ -243,7 +332,7 @@ void AP_MotorsUGV::output_throttle(SRV_Channel::Aux_servo_function_t function, f
             break;
         case SRV_Channel::k_throttleLeft:
         case SRV_Channel::k_throttleRight:
-            SRV_Channels::set_output_scaled(function,  throttle*10.0f);
+            SRV_Channels::set_output_scaled(function,  throttle * 10.0f);
             break;
         default:
             // do nothing
@@ -269,22 +358,8 @@ void AP_MotorsUGV::set_limits_from_input(bool armed, float steering, float throt
     // set limits based on inputs
     limit.steer_left = !armed || (steering <= -4500.0f);
     limit.steer_right = !armed || (steering >= 4500.0f);
-    limit.throttle_lower = !armed || (throttle <= -100.0f);
-    limit.throttle_upper = !armed || (throttle >= 100.0f);
-}
-
-// setup servo output
-void AP_MotorsUGV::setup_servo_output()
-{
-    // k_steering are limited to -45;45 degree
-    SRV_Channels::set_angle(SRV_Channel::k_steering, SERVO_MAX);
-
-    // k_throttle are in power percent so -100 ... 100
-    SRV_Channels::set_angle(SRV_Channel::k_throttle, 100);
-
-    // skid steering left/right throttle as -1000 to 1000 values
-    SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  1000);
-    SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 1000);
+    limit.throttle_lower = !armed || (throttle <= -_throttle_max);
+    limit.throttle_upper = !armed || (throttle >= _throttle_max);
 }
 
 // setup pwm output type
@@ -296,8 +371,8 @@ void AP_MotorsUGV::setup_pwm_type()
         // tell HAL to do immediate output
         hal.rcout->set_output_mode(AP_HAL::RCOutput::MODE_PWM_ONESHOT);
         break;
-    case PWM_TYPE_BRUSHED:
-    case PWM_TYPE_BRUSHEDBIPOLAR:
+    case PWM_TYPE_BRUSHED_WITH_RELAY:
+    case PWM_TYPE_BRUSHED_BIPOLAR:
         hal.rcout->set_output_mode(AP_HAL::RCOutput::MODE_PWM_BRUSHED);
         /*
          * Group 0: channels 0 1
@@ -312,33 +387,6 @@ void AP_MotorsUGV::setup_pwm_type()
         // do nothing
         break;
     }
-}
-
-// setup output in case of main CPU failure
-void AP_MotorsUGV::setup_safety_output()
-{
-    if (_pwm_type == PWM_TYPE_BRUSHED) {
-        // set trim to min to set duty cycle range (0 - 100%) to servo range
-        SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttleLeft);
-        SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttleRight);
-    }
-
-    if (_disarm_disable_pwm) {
-        // throttle channels output zero pwm (i.e. no signal)
-        SRV_Channels::set_safety_limit(SRV_Channel::k_throttle, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
-        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleLeft, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
-        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleRight, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
-    } else {
-        // throttle channels output trim values (because rovers will go backwards if set to MIN)
-        SRV_Channels::set_safety_limit(SRV_Channel::k_throttle, SRV_Channel::SRV_CHANNEL_LIMIT_TRIM);
-        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleLeft, SRV_Channel::SRV_CHANNEL_LIMIT_TRIM);
-        SRV_Channels::set_safety_limit(SRV_Channel::k_throttleRight, SRV_Channel::SRV_CHANNEL_LIMIT_TRIM);
-    }
-
-    // stop sending pwm if main CPU fails
-    SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttle, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
-    SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttleLeft, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
-    SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttleRight, SRV_Channel::SRV_CHANNEL_LIMIT_ZERO_PWM);
 }
 
 // test steering or throttle output as a percentage of the total (range -100 to +100)

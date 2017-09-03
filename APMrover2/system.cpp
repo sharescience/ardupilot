@@ -23,8 +23,9 @@ void Rover::init_ardupilot()
     // initialise console serial port
     serial_manager.init_console();
 
-    hal.console->printf("\n\nInit " FIRMWARE_STRING
+    hal.console->printf("\n\nInit %s"
                         "\n\nFree RAM: %u\n",
+                        fwver.fw_string,
                         hal.util->available_memory());
 
     //
@@ -66,10 +67,6 @@ void Rover::init_ardupilot()
 
     rssi.init();
 
-    // keep a record of how many resets have happened. This can be
-    // used to detect in-flight resets
-    g.num_resets.set_and_save(g.num_resets+1);
-
     // init baro before we start the GCS, so that the CLI baro test works
     barometer.init();
 
@@ -83,7 +80,7 @@ void Rover::init_ardupilot()
 
     // setup frsky telemetry
 #if FRSKY_TELEM_ENABLED == ENABLED
-    frsky_telemetry.init(serial_manager, FIRMWARE_STRING, MAV_TYPE_GROUND_ROVER);
+    frsky_telemetry.init(serial_manager, fwver.fw_string, MAV_TYPE_GROUND_ROVER);
 #endif
 
 #if LOGGING_ENABLED == ENABLED
@@ -152,6 +149,7 @@ void Rover::init_ardupilot()
     // set the correct flight mode
     // ---------------------------
     reset_control_switch();
+    init_aux_switch();
 
     // disable safety if requested
     BoardConfig.init_safety();
@@ -244,27 +242,10 @@ bool Rover::set_mode(Mode &new_mode, mode_reason_t reason)
     return true;
 }
 
-/*
-  set_mode() wrapper for MAVLink SET_MODE
- */
-bool Rover::mavlink_set_mode(uint8_t mode)
-{
-    Mode *new_mode = control_mode_from_num((enum mode)mode);
-    if (new_mode == nullptr) {
-        return false;
-    }
-    return set_mode(*new_mode, MODE_REASON_GCS_COMMAND);
-}
-
 void Rover::startup_INS_ground(void)
 {
-    gcs().send_text(MAV_SEVERITY_INFO, "Warming up ADC");
-    mavlink_delay(500);
-
-    // Makes the servos wiggle twice - about to begin INS calibration - HOLD LEVEL AND STILL!!
-    // -----------------------
     gcs().send_text(MAV_SEVERITY_INFO, "Beginning INS calibration. Do not move vehicle");
-    mavlink_delay(1000);
+    hal.scheduler->delay(100);
 
     ahrs.init();
     // say to EKF that rover only move by goind forward
@@ -308,9 +289,6 @@ void Rover::notify_mode(enum mode new_mode)
     switch (new_mode) {
     case MANUAL:
         notify.set_flight_mode_str("MANU");
-        break;
-    case LEARNING:
-        notify.set_flight_mode_str("LERN");
         break;
     case STEERING:
         notify.set_flight_mode_str("STER");

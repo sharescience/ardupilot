@@ -19,6 +19,7 @@ const AP_Param::Info Rover::var_info[] = {
     // @Param: SYSID_SW_TYPE
     // @DisplayName: Software Type
     // @Description: This is used by the ground station to recognise the software type (eg ArduPlane vs ArduCopter)
+    // @Values: 0:ArduPlane,4:AntennaTracker,10:Copter,20:Rover,40:ArduSub
     // @User: Advanced
     // @ReadOnly: True
     GSCALAR(software_type,          "SYSID_SW_TYPE",    Parameters::k_software_type),
@@ -30,13 +31,6 @@ const AP_Param::Info Rover::var_info[] = {
     // @Bitmask: 0:ATTITUDE_FAST,1:ATTITUDE_MED,2:GPS,3:PM,4:CTUN,5:NTUN,6:MODE,7:IMU,8:CMD,9:CURRENT,10:COMPASS,11:TECS,12:CAMERA,13:RC,14:RANGEFINDER,15:ARM/DISARM,19:IMU_RAW
     // @User: Advanced
     GSCALAR(log_bitmask,            "LOG_BITMASK",      DEFAULT_LOG_BITMASK),
-
-    // @Param: SYS_NUM_RESETS
-    // @DisplayName: Num Resets
-    // @Description: Number of APM board resets
-    // @ReadOnly: True
-    // @User: Advanced
-    GSCALAR(num_resets,             "SYS_NUM_RESETS",   0),
 
     // @Param: RST_SWITCH_CH
     // @DisplayName: Reset Switch Channel
@@ -135,27 +129,9 @@ const AP_Param::Info Rover::var_info[] = {
     // @Param: CH7_OPTION
     // @DisplayName: Channel 7 option
     // @Description: What to do use channel 7 for
-    // @Values: 0:Nothing,1:LearnWaypoint
+    // @Values: 0:Nothing,1:SaveWaypoint,2:LearnCruiseSpeed
     // @User: Standard
     GSCALAR(ch7_option,             "CH7_OPTION",          CH7_OPTION),
-
-    // @Param: THR_MIN
-    // @DisplayName: Minimum Throttle
-    // @Description: The minimum throttle setting to which the autopilot will apply. This is mostly useful for rovers with internal combustion motors, to prevent the motor from cutting out in auto mode.
-    // @Units: %
-    // @Range: 0 100
-    // @Increment: 1
-    // @User: Standard
-    GSCALAR(throttle_min,           "THR_MIN",          THROTTLE_MIN),
-
-    // @Param: THR_MAX
-    // @DisplayName: Maximum Throttle
-    // @Description: The maximum throttle setting to which the autopilot will apply. This can be used to prevent overheating a ESC or motor on an electric rover.
-    // @Units: %
-    // @Range: 0 100
-    // @Increment: 1
-    // @User: Standard
-    GSCALAR(throttle_max,           "THR_MAX",          THROTTLE_MAX),
 
     // @Param: CRUISE_THROTTLE
     // @DisplayName: Base throttle percentage in auto
@@ -251,11 +227,11 @@ const AP_Param::Info Rover::var_info[] = {
     // @User: Standard
     GSCALAR(rangefinder_debounce,   "RNGFND_DEBOUNCE",    2),
 
-    // @Param: LEARN_CH
-    // @DisplayName: Learning channel
-    // @Description: RC Channel to use for learning waypoints
+    // @Param: AUX_CH
+    // @DisplayName: Auxiliary switch channel
+    // @Description: RC Channel to use for auxiliary functions including saving waypoints
     // @User: Advanced
-    GSCALAR(learn_channel,    "LEARN_CH",       7),
+    GSCALAR(aux_channel,    "AUX_CH",       7),
 
     // @Param: MODE_CH
     // @DisplayName: Mode channel
@@ -265,45 +241,45 @@ const AP_Param::Info Rover::var_info[] = {
 
     // @Param: MODE1
     // @DisplayName: Mode1
-    // @Values: 0:Manual,2:LEARNING,3:STEERING,4:HOLD,10:Auto,11:RTL,15:Guided
+    // @Values: 0:Manual,3:Steering,4:Hold,10:Auto,11:RTL,15:Guided
     // @User: Standard
     // @Description: Driving mode for switch position 1 (910 to 1230 and above 2049)
-    GSCALAR(mode1,           "MODE1",         MODE_1),
+    GSCALAR(mode1,           "MODE1",         MANUAL),
 
     // @Param: MODE2
     // @DisplayName: Mode2
     // @Description: Driving mode for switch position 2 (1231 to 1360)
-    // @Values: 0:Manual,2:LEARNING,3:STEERING,4:HOLD,10:Auto,11:RTL,15:Guided
+    // @Values: 0:Manual,3:Steering,4:Hold,10:Auto,11:RTL,15:Guided
     // @User: Standard
-    GSCALAR(mode2,           "MODE2",         MODE_2),
+    GSCALAR(mode2,           "MODE2",         MANUAL),
 
     // @Param: MODE3
     // @DisplayName: Mode3
     // @Description: Driving mode for switch position 3 (1361 to 1490)
-    // @Values: 0:Manual,2:LEARNING,3:STEERING,4:HOLD,10:Auto,11:RTL,15:Guided
+    // @Values: 0:Manual,3:Steering,4:Hold,10:Auto,11:RTL,15:Guided
     // @User: Standard
-    GSCALAR(mode3,           "MODE3",         MODE_3),
+    GSCALAR(mode3,           "MODE3",         MANUAL),
 
     // @Param: MODE4
     // @DisplayName: Mode4
     // @Description: Driving mode for switch position 4 (1491 to 1620)
-    // @Values: 0:Manual,2:LEARNING,3:STEERING,4:HOLD,10:Auto,11:RTL,15:Guided
+    // @Values: 0:Manual,3:Steering,4:Hold,10:Auto,11:RTL,15:Guided
     // @User: Standard
-    GSCALAR(mode4,           "MODE4",         MODE_4),
+    GSCALAR(mode4,           "MODE4",         MANUAL),
 
     // @Param: MODE5
     // @DisplayName: Mode5
     // @Description: Driving mode for switch position 5 (1621 to 1749)
-    // @Values: 0:Manual,2:LEARNING,3:STEERING,4:HOLD,10:Auto,11:RTL,15:Guided
+    // @Values: 0:Manual,3:Steering,4:Hold,10:Auto,11:RTL,15:Guided
     // @User: Standard
-    GSCALAR(mode5,           "MODE5",         MODE_5),
+    GSCALAR(mode5,           "MODE5",         MANUAL),
 
     // @Param: MODE6
     // @DisplayName: Mode6
     // @Description: Driving mode for switch position 6 (1750 to 2049)
-    // @Values: 0:Manual,2:LEARNING,3:STEERING,4:HOLD,10:Auto,11:RTL,15:Guided
+    // @Values: 0:Manual,3:Steering,4:Hold,10:Auto,11:RTL,15:Guided
     // @User: Standard
-    GSCALAR(mode6,           "MODE6",         MODE_6),
+    GSCALAR(mode6,           "MODE6",         MANUAL),
 
     // @Param: WP_RADIUS
     // @DisplayName: Waypoint radius
@@ -568,6 +544,8 @@ const AP_Param::ConversionInfo conversion_table[] = {
     { Parameters::k_param_serial0_baud,       0,      AP_PARAM_INT16, "SERIAL0_BAUD" },
     { Parameters::k_param_serial1_baud,       0,      AP_PARAM_INT16, "SERIAL1_BAUD" },
     { Parameters::k_param_serial2_baud,       0,      AP_PARAM_INT16, "SERIAL2_BAUD" },
+    { Parameters::k_param_throttle_min_old,   0,      AP_PARAM_INT8,  "MOT_THR_MIN" },
+    { Parameters::k_param_throttle_max_old,   0,      AP_PARAM_INT8,  "MOT_THR_MAX" },
 };
 
 void Rover::load_parameters(void)
@@ -591,6 +569,7 @@ void Rover::load_parameters(void)
     const uint32_t before = micros();
     // Load all auto-loaded EEPROM variables
     AP_Param::load_all();
+    AP_Param::convert_old_parameters(&conversion_table[0], ARRAY_SIZE(conversion_table));
 
     AP_Param::set_frame_type_flags(AP_PARAM_FRAME_ROVER);
 
