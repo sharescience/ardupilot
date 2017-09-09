@@ -736,6 +736,11 @@ void Compass::_detect_backends(void)
                 AP_Compass_AK8963::name, false);
     ADD_BACKEND(DRIVER_HMC5883, AP_Compass_HMC5843::probe(*this, hal.i2c_mgr->get_device(HAL_COMPASS_HMC5843_I2C_BUS, HAL_COMPASS_HMC5843_I2C_ADDR), true),
                 AP_Compass_HMC5843::name, true);
+#elif HAL_COMPASS_DEFAULT == HAL_COMPASS_OCPOC_ZYNQ
+    ADD_BACKEND(DRIVER_HMC5883, AP_Compass_HMC5843::probe(*this, hal.i2c_mgr->get_device(HAL_COMPASS_HMC5843_I2C_BUS, HAL_COMPASS_HMC5843_I2C_ADDR)),
+                AP_Compass_HMC5843::name, true);
+    ADD_BACKEND(DRIVER_AK8963,AP_Compass_AK8963::probe_mpu9250(*this, 0),
+                 AP_Compass_AK8963::name, false);
 #elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXF || \
       CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_ERLEBRAIN2 || \
       CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_PXFMINI
@@ -811,8 +816,9 @@ Compass::read(void)
         // call read on each of the backend. This call updates field[i]
         _backends[i]->read();
     }
+    uint32_t time = AP_HAL::millis();
     for (uint8_t i=0; i < COMPASS_MAX_INSTANCES; i++) {
-        _state[i].healthy = (AP_HAL::millis() - _state[i].last_update_ms < 500);
+        _state[i].healthy = (time - _state[i].last_update_ms < 500);
     }
     return healthy();
 }
