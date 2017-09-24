@@ -110,7 +110,6 @@
 #include "Parameters.h"
 #include "avoidance_adsb.h"
 #include "AP_Arming.h"
-#include "version.h"
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
 #include <SITL/SITL.h>
@@ -157,18 +156,7 @@ public:
     void loop() override;
 
 private:
-
-    const AP_FWVersion fwver {
-        major: FW_MAJOR,
-        minor: FW_MINOR,
-        patch: FW_PATCH,
-        fw_type: FW_TYPE,
-#ifndef GIT_VERSION
-        fw_string: THISFIRMWARE
-#else
-        fw_string: THISFIRMWARE " (" GIT_VERSION ")"
-#endif
-    };
+    static const AP_FWVersion fwver;
 
     // key aircraft parameters passed to multiple libraries
     AP_Vehicle::FixedWing aparm;
@@ -794,9 +782,6 @@ private:
     // use this to prevent recursion during sensor init
     bool in_mavlink_delay = false;
 
-    // true if we are out of time in our event timeslice
-    bool gcs_out_of_time = false;
-
     // time that rudder arming has been running
     uint32_t rudder_arm_timer;
 
@@ -888,6 +873,7 @@ private:
     void set_guided_WP(void);
     void init_home();
     void update_home();
+    void set_ekf_origin(const Location& loc);
     void do_RTL(int32_t alt);
     bool verify_takeoff();
     bool verify_loiter_unlim();
@@ -1057,8 +1043,6 @@ private:
     void calc_nav_yaw_ground(void);
     void throttle_slew_limit(void);
     bool suppress_throttle(void);
-    void channel_output_mixer_pwm(uint8_t mixing_type, uint16_t & chan1, uint16_t & chan2)const;
-    void channel_output_mixer(uint8_t mixing_type, SRV_Channel::Aux_servo_function_t servo1, SRV_Channel::Aux_servo_function_t servo2);
     void channel_function_mixer(SRV_Channel::Aux_servo_function_t func1_in, SRV_Channel::Aux_servo_function_t func2_in,
                                 SRV_Channel::Aux_servo_function_t func1_out, SRV_Channel::Aux_servo_function_t func2_out);
     void flaperon_update(int8_t flap_percent);

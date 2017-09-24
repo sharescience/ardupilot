@@ -1,5 +1,4 @@
 #include "Copter.h"
-#include "version.h"
 
 #include "GCS_Mavlink.h"
 
@@ -52,6 +51,7 @@ NOINLINE void Copter::send_heartbeat(mavlink_channel_t chan)
     case CIRCLE:
     case POSHOLD:
     case BRAKE:
+    case SMART_RTL:
         base_mode |= MAV_MODE_FLAG_GUIDED_ENABLED;
         // note that MAV_MODE_FLAG_AUTO_ENABLED does not match what
         // APM does in any mode, as that is defined as "system finds its own goal
@@ -334,7 +334,7 @@ bool GCS_MAVLINK_Copter::try_send_message(enum ap_message id)
     // dereference; it means that we send messages out even if we're
     // failing to detect a PX4 board type (see delay(3000) in px_drivers).
     if (copter.motors != nullptr && copter.scheduler.time_available_usec() < 250 && copter.motors->armed()) {
-        copter.gcs_out_of_time = true;
+        gcs().set_out_of_time(true);
         return false;
     }
 #endif
@@ -635,11 +635,11 @@ GCS_MAVLINK_Copter::data_stream_send(void)
         copter.DataFlash.handle_log_send(*this);
     }
 
-    copter.gcs_out_of_time = false;
+    gcs().set_out_of_time(false);
 
     send_queued_parameters();
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (copter.in_mavlink_delay) {
         // don't send any other stream types while in the delay callback
@@ -652,7 +652,7 @@ GCS_MAVLINK_Copter::data_stream_send(void)
         send_message(MSG_RAW_IMU3);  // SENSOR_OFFSETS
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_EXTENDED_STATUS)) {
         send_message(MSG_EXTENDED_STATUS1); // SYS_STATUS, POWER_STATUS
@@ -666,26 +666,26 @@ GCS_MAVLINK_Copter::data_stream_send(void)
         send_message(MSG_FENCE_STATUS);
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_POSITION)) {
         send_message(MSG_LOCATION);
         send_message(MSG_LOCAL_POSITION);
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_RAW_CONTROLLER)) {
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_RC_CHANNELS)) {
         send_message(MSG_SERVO_OUTPUT_RAW);
         send_message(MSG_RADIO_IN);
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_EXTRA1)) {
         send_message(MSG_ATTITUDE);
@@ -693,13 +693,13 @@ GCS_MAVLINK_Copter::data_stream_send(void)
         send_message(MSG_PID_TUNING);
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_EXTRA2)) {
         send_message(MSG_VFR_HUD);
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_EXTRA3)) {
         send_message(MSG_AHRS);
@@ -721,7 +721,7 @@ GCS_MAVLINK_Copter::data_stream_send(void)
         send_message(MSG_RPM);
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_ADSB)) {
         send_message(MSG_ADSB_VEHICLE);
@@ -882,6 +882,49 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         mavlink_msg_command_int_decode(msg, &packet);
         switch(packet.command)
         {
+            case MAV_CMD_DO_SET_HOME: {
+                // assume failure
+                result = MAV_RESULT_FAILED;
+                if (is_equal(packet.param1, 1.0f)) {
+                    // if param1 is 1, use current location
+                    if (copter.set_home_to_current_location(true)) {
+                        result = MAV_RESULT_ACCEPTED;
+                    }
+                    break;
+                }
+                // ensure param1 is zero
+                if (!is_zero(packet.param1)) {
+                    break;
+                }
+                // check frame type is supported
+                if (packet.frame != MAV_FRAME_GLOBAL &&
+                    packet.frame != MAV_FRAME_GLOBAL_INT &&
+                    packet.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT &&
+                    packet.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
+                    break;
+                }
+                // sanity check location
+                if (!check_latlng(packet.x, packet.y)) {
+                    break;
+                }
+                Location new_home_loc {};
+                new_home_loc.lat = packet.x;
+                new_home_loc.lng = packet.y;
+                new_home_loc.alt = packet.z * 100;
+                // handle relative altitude
+                if (packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT || packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
+                    if (copter.ap.home_state == HOME_UNSET) {
+                        // cannot use relative altitude if home is not set
+                        break;
+                    }
+                    new_home_loc.alt += copter.ahrs.get_home().alt;
+                }
+                if (copter.set_home(new_home_loc, true)) {
+                    result = MAV_RESULT_ACCEPTED;
+                }
+                break;
+            }
+
             case MAV_CMD_DO_SET_ROI: {
                 // param1 : /* Region of interest mode (not used)*/
                 // param2 : /* MISSION index/ target ID (not used)*/
@@ -902,6 +945,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
                 result = MAV_RESULT_ACCEPTED;
                 break;
             }
+
             default:
                 result = MAV_RESULT_UNSUPPORTED;
                 break;
@@ -991,11 +1035,15 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
             // param6 : longitude
             // param7 : altitude (absolute)
             result = MAV_RESULT_FAILED; // assume failure
-            if(is_equal(packet.param1,1.0f) || (is_zero(packet.param5) && is_zero(packet.param6) && is_zero(packet.param7))) {
+            if (is_equal(packet.param1,1.0f)) {
                 if (copter.set_home_to_current_location(true)) {
                     result = MAV_RESULT_ACCEPTED;
                 }
             } else {
+                // ensure param1 is zero
+                if (!is_zero(packet.param1)) {
+                    break;
+                }
                 // sanity check location
                 if (!check_latlng(packet.param5, packet.param6)) {
                     break;
@@ -1113,6 +1161,10 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         case MAV_CMD_GET_HOME_POSITION:
             if (copter.ap.home_state != HOME_UNSET) {
                 send_home(copter.ahrs.get_home());
+                Location ekf_origin;
+                if (copter.ahrs.get_origin(ekf_origin)) {
+                    send_ekf_origin(ekf_origin);
+                }
                 result = MAV_RESULT_ACCEPTED;
             } else {
                 result = MAV_RESULT_FAILED;
@@ -1443,9 +1495,11 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         }
 
         // check for supported coordinate frames
-        if (packet.coordinate_frame != MAV_FRAME_GLOBAL_INT &&
+        if (packet.coordinate_frame != MAV_FRAME_GLOBAL &&
+            packet.coordinate_frame != MAV_FRAME_GLOBAL_INT &&
             packet.coordinate_frame != MAV_FRAME_GLOBAL_RELATIVE_ALT && // solo shot manager incorrectly sends RELATIVE_ALT instead of RELATIVE_ALT_INT
             packet.coordinate_frame != MAV_FRAME_GLOBAL_RELATIVE_ALT_INT &&
+            packet.coordinate_frame != MAV_FRAME_GLOBAL_TERRAIN_ALT &&
             packet.coordinate_frame != MAV_FRAME_GLOBAL_TERRAIN_ALT_INT) {
             break;
         }
@@ -1479,10 +1533,12 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
                     loc.flags.relative_alt = true;
                     loc.flags.terrain_alt = false;
                     break;
+                case MAV_FRAME_GLOBAL_TERRAIN_ALT:
                 case MAV_FRAME_GLOBAL_TERRAIN_ALT_INT:
                     loc.flags.relative_alt = true;
                     loc.flags.terrain_alt = true;
                     break;
+                case MAV_FRAME_GLOBAL:
                 case MAV_FRAME_GLOBAL_INT:
                 default:
                     // Copter does not support navigation to absolute altitudes. This convert the WGS84 altitude
@@ -1808,4 +1864,10 @@ bool GCS_MAVLINK_Copter::set_mode(const uint8_t mode)
 const AP_FWVersion &GCS_MAVLINK_Copter::get_fwver() const
 {
     return copter.fwver;
+}
+
+
+void GCS_MAVLINK_Copter::set_ekf_origin(const Location& loc)
+{
+    copter.set_ekf_origin(loc);
 }

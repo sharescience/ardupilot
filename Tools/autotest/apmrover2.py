@@ -19,12 +19,8 @@ HOME = mavutil.location(40.071374969556928, -105.22978898137808, 1583.702759, 24
 homeloc = None
 
 
-def wait_ready_to_arm(mavproxy):
-    # wait for EKF and GPS checks to pass
-    mavproxy.expect('IMU0 is using GPS')
-
 def arm_rover(mavproxy, mav):
-    wait_ready_to_arm(mavproxy);
+    wait_ready_to_arm(mav);
 
     mavproxy.send('arm throttle\n')
     mavproxy.expect('ARMED')
@@ -111,6 +107,20 @@ def do_get_autopilot_capabilities(mavproxy, mav):
         return False
     print("AUTOPILOT_VERSION received")
     return True;
+
+def do_set_mode_via_command_long(mavproxy, mav):
+    base_mode = mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+    custom_mode = 4 # hold
+    start = time.time()
+    while time.time() - start < 5:
+        mavproxy.send("long DO_SET_MODE %u %u\n" % (base_mode,custom_mode))
+        m = mav.recv_match(type='HEARTBEAT', blocking=True, timeout=10)
+        if m is None:
+            return False
+        if m.custom_mode == custom_mode:
+            return True
+        time.sleep(0.1)
+    return False
 
 vinfo = vehicleinfo.VehicleInfo()
 
@@ -222,9 +232,15 @@ def drive_APMrover2(binary, viewerip=None, use_map=False, valgrind=False, gdb=Fa
         print("Getting banner")
         if not do_get_banner(mavproxy, mav):
             failed = True
+
         print("Getting autopilot capabilities")
         if not do_get_autopilot_capabilities(mavproxy, mav):
             failed = True
+
+        print("Setting mode via MAV_COMMAND_DO_SET_MODE")
+        if not do_set_mode_via_command_long(mavproxy, mav):
+            failed = True
+
     except pexpect.TIMEOUT as e:
         print("Failed with timeout")
         failed = True

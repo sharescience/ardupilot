@@ -282,7 +282,8 @@ void DataFlash_Class::Log_Write_GPS(const AP_GPS &gps, uint8_t i, uint64_t time_
         vacc          : (uint16_t)MIN((vacc*100), UINT16_MAX),
         sacc          : (uint16_t)MIN((sacc*100), UINT16_MAX),
         have_vv       : (uint8_t)gps.have_vertical_velocity(i),
-        sample_ms     : gps.last_message_time_ms(i)
+        sample_ms     : gps.last_message_time_ms(i),
+        delta_ms      : gps.last_message_delta_time_ms(i)
     };
     WriteBlock(&pkt2, sizeof(pkt2));
 }
@@ -1967,4 +1968,20 @@ void DataFlash_Class::Log_Write_Proximity(AP_Proximity &proximity)
             closest_dist    : close_dist
     };
     WriteBlock(&pkt_proximity, sizeof(pkt_proximity));
+}
+
+void DataFlash_Class::Log_Write_SRTL(bool active, uint16_t num_points, uint16_t max_points, uint8_t action, const Vector3f& breadcrumb)
+{
+    struct log_SRTL pkt_srtl = {
+        LOG_PACKET_HEADER_INIT(LOG_SRTL_MSG),
+        time_us         : AP_HAL::micros64(),
+        active          : active,
+        num_points      : num_points,
+        max_points      : max_points,
+        action          : action,
+        N               : breadcrumb.x,
+        E               : breadcrumb.y,
+        D               : breadcrumb.z
+    };
+    WriteBlock(&pkt_srtl, sizeof(pkt_srtl));
 }

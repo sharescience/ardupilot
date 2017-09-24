@@ -594,6 +594,18 @@ void Copter::do_aux_switch_function(int8_t ch_function, uint8_t ch_flag)
                 break;
             }
             break;
+
+        case AUXSW_SMART_RTL:
+            if (ch_flag == AUX_SWITCH_HIGH) {
+                // engage SmartRTL (if not possible we remain in current flight mode)
+                set_mode(SMART_RTL, MODE_REASON_TX_COMMAND);
+            } else {
+                // return to flight mode switch's flight mode if we are currently in RTL
+                if (control_mode == SMART_RTL) {
+                    reset_control_switch();
+                }
+            }
+            break;
     }
 }
 

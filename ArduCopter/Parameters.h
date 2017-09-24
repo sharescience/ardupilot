@@ -572,6 +572,9 @@ public:
     
     // control over servo output ranges
     SRV_Channels servo_channels;
+
+    // Safe RTL library
+    AP_SmartRTL smart_rtl;
 };
 
 extern const AP_Param::Info        var_info[];
