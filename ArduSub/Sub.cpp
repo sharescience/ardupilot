@@ -13,7 +13,10 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Sub.h"
+
+#define FORCE_VERSION_H_INCLUDE
 #include "version.h"
+#undef FORCE_VERSION_H_INCLUDE
 
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
@@ -77,7 +80,6 @@ Sub::Sub(void) :
           terrain(ahrs, mission, rally),
 #endif
           in_mavlink_delay(false),
-          gcs_out_of_time(false),
           param_loader(var_info),
           last_pilot_yaw_input_ms(0)
 {

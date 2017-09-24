@@ -1,5 +1,4 @@
 #include "Copter.h"
-#include "version.h"
 
 /*****************************************************************************
 *   The init_ardupilot function processes everything we need for an in - air restart
@@ -227,6 +226,9 @@ void Copter::init_ardupilot()
 
     // initialise mission library
     mission.init();
+
+    // initialize SmartRTL
+    g2.smart_rtl.init();
 
     // initialise DataFlash library
     DataFlash.set_mission(&mission);

@@ -1,5 +1,4 @@
 #include "Sub.h"
-#include "version.h"
 
 #include "GCS_Mavlink.h"
 
@@ -490,7 +489,7 @@ bool GCS_MAVLINK_Sub::try_send_message(enum ap_message id)
     // wants to fire then don't send a mavlink message. We want to
     // prioritise the main flight control loop over communications
     if (sub.scheduler.time_available_usec() < 250 && sub.motors.armed()) {
-        sub.gcs_out_of_time = true;
+        gcs().set_out_of_time(true);
         return false;
     }
 
@@ -755,11 +754,11 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         sub.DataFlash.handle_log_send(*this);
     }
 
-    sub.gcs_out_of_time = false;
+    gcs().set_out_of_time(false);
 
     send_queued_parameters();
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
@@ -774,7 +773,7 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         send_message(MSG_RAW_IMU3);
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
@@ -791,7 +790,7 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         send_message(MSG_NAMED_FLOAT);
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
@@ -800,14 +799,14 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         send_message(MSG_LOCAL_POSITION);
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
     if (stream_trigger(STREAM_RAW_CONTROLLER)) {
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
@@ -816,7 +815,7 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         send_message(MSG_RADIO_IN);
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
@@ -826,7 +825,7 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         send_message(MSG_PID_TUNING);
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
@@ -834,7 +833,7 @@ GCS_MAVLINK_Sub::data_stream_send(void)
         send_message(MSG_VFR_HUD);
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 
@@ -860,7 +859,7 @@ GCS_MAVLINK_Sub::data_stream_send(void)
 #endif
     }
 
-    if (sub.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
         return;
     }
 }
@@ -961,6 +960,50 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         mavlink_command_int_t packet;
         mavlink_msg_command_int_decode(msg, &packet);
         switch (packet.command) {
+
+        case MAV_CMD_DO_SET_HOME: {
+            // assume failure
+            result = MAV_RESULT_FAILED;
+            if (is_equal(packet.param1, 1.0f)) {
+                // if param1 is 1, use current location
+                if (sub.set_home_to_current_location(true)) {
+                    result = MAV_RESULT_ACCEPTED;
+                }
+                break;
+            }
+            // ensure param1 is zero
+            if (!is_zero(packet.param1)) {
+                break;
+            }
+            // check frame type is supported
+            if (packet.frame != MAV_FRAME_GLOBAL &&
+                packet.frame != MAV_FRAME_GLOBAL_INT &&
+                packet.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT &&
+                packet.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
+                break;
+            }
+            // sanity check location
+            if (!check_latlng(packet.x, packet.y)) {
+                break;
+            }
+            Location new_home_loc {};
+            new_home_loc.lat = packet.x;
+            new_home_loc.lng = packet.y;
+            new_home_loc.alt = packet.z * 100;
+            // handle relative altitude
+            if (packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT || packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
+                if (sub.ap.home_state == HOME_UNSET) {
+                    // cannot use relative altitude if home is not set
+                    break;
+                }
+                new_home_loc.alt += sub.ahrs.get_home().alt;
+            }
+            if (sub.set_home(new_home_loc, true)) {
+                result = MAV_RESULT_ACCEPTED;
+            }
+            break;
+        }
+
         case MAV_CMD_DO_SET_ROI: {
             // param1 : /* Region of interest mode (not used)*/
             // param2 : /* MISSION index/ target ID (not used)*/
@@ -1057,6 +1100,10 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
                     result = MAV_RESULT_ACCEPTED;
                 }
             } else {
+                // ensure param1 is zero
+                if (!is_zero(packet.param1)) {
+                    break;
+                }
                 // sanity check location
                 if (!check_latlng(packet.param5, packet.param6)) {
                     break;
@@ -1178,6 +1225,10 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         case MAV_CMD_GET_HOME_POSITION:
             if (sub.ap.home_state != HOME_UNSET) {
                 send_home(sub.ahrs.get_home());
+                Location ekf_origin;
+                if (sub.ahrs.get_origin(ekf_origin)) {
+                    send_ekf_origin(ekf_origin);
+                }
                 result = MAV_RESULT_ACCEPTED;
             }
             break;
@@ -1380,9 +1431,11 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         }
 
         // check for supported coordinate frames
-        if (packet.coordinate_frame != MAV_FRAME_GLOBAL_INT &&
+        if (packet.coordinate_frame != MAV_FRAME_GLOBAL &&
+                packet.coordinate_frame != MAV_FRAME_GLOBAL_INT &&
                 packet.coordinate_frame != MAV_FRAME_GLOBAL_RELATIVE_ALT && // solo shot manager incorrectly sends RELATIVE_ALT instead of RELATIVE_ALT_INT
                 packet.coordinate_frame != MAV_FRAME_GLOBAL_RELATIVE_ALT_INT &&
+                packet.coordinate_frame != MAV_FRAME_GLOBAL_TERRAIN_ALT &&
                 packet.coordinate_frame != MAV_FRAME_GLOBAL_TERRAIN_ALT_INT) {
             break;
         }
@@ -1416,10 +1469,12 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
                 loc.flags.relative_alt = true;
                 loc.flags.terrain_alt = false;
                 break;
+            case MAV_FRAME_GLOBAL_TERRAIN_ALT:
             case MAV_FRAME_GLOBAL_TERRAIN_ALT_INT:
                 loc.flags.relative_alt = true;
                 loc.flags.terrain_alt = true;
                 break;
+            case MAV_FRAME_GLOBAL:
             case MAV_FRAME_GLOBAL_INT:
             default:
                 loc.flags.relative_alt = false;
@@ -1625,6 +1680,11 @@ bool GCS_MAVLINK_Sub::set_mode(uint8_t mode)
 const AP_FWVersion &GCS_MAVLINK_Sub::get_fwver() const
 {
     return sub.fwver;
+}
+
+void GCS_MAVLINK_Sub::set_ekf_origin(const Location& loc)
+{
+    sub.set_ekf_origin(loc);
 }
 
 // dummy method to avoid linking AFS

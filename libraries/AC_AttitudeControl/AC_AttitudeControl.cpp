@@ -1,3 +1,4 @@
+#if UDF_AC_ATTITUDE_CONTROL == 0
 #include "AC_AttitudeControl.h"
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Math/AP_Math.h>
@@ -781,3 +782,4 @@ float AC_AttitudeControl::max_rate_step_bf_yaw()
     float alpha_remaining = 1-alpha;
     return 2.0f*_motors.get_throttle_hover()*AC_ATTITUDE_RATE_RP_CONTROLLER_OUT_MAX/((alpha_remaining*alpha_remaining*alpha_remaining*alpha*get_rate_yaw_pid().kD())/_dt + get_rate_yaw_pid().kP());
 }
+#endif // #if UDF_AC_ATTITUDE_CONTROL

@@ -1,5 +1,4 @@
 #include "Rover.h"
-#include "version.h"
 
 #include "GCS_Mavlink.h"
 
@@ -121,7 +120,7 @@ void Rover::send_location(mavlink_channel_t chan)
         current_loc.lat,                    // in 1E7 degrees
         current_loc.lng,                    // in 1E7 degrees
         current_loc.alt * 10UL,             // millimeters above sea level
-        (current_loc.alt - home.alt) * 10,  // millimeters above ground
+        (current_loc.alt - home.alt) * 10,  // millimeters above home
         vel.x * 100,   // X speed cm/s (+ve North)
         vel.y * 100,   // Y speed cm/s (+ve East)
         vel.z * -100,  // Z speed cm/s (+ve up)
@@ -282,7 +281,7 @@ bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
     // wants to fire then don't send a mavlink message. We want to
     // prioritise the main flight control loop over communications
     if (!rover.in_mavlink_delay && rover.scheduler.time_available_usec() < 1200) {
-        rover.gcs_out_of_time = true;
+        gcs().set_out_of_time(true);
         return false;
     }
 
@@ -506,7 +505,7 @@ const AP_Param::GroupInfo GCS_MAVLINK::var_info[] = {
 void
 GCS_MAVLINK_Rover::data_stream_send(void)
 {
-    rover.gcs_out_of_time = false;
+    gcs().set_out_of_time(false);
 
     if (!rover.in_mavlink_delay) {
         rover.DataFlash.handle_log_send(*this);
@@ -514,7 +513,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
 
     send_queued_parameters();
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -534,7 +533,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         return;
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -543,7 +542,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         send_message(MSG_RAW_IMU3);
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -558,7 +557,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         send_message(MSG_NAV_CONTROLLER_OUTPUT);
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -568,7 +567,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         send_message(MSG_LOCAL_POSITION);
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -576,7 +575,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         send_message(MSG_SERVO_OUT);
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -585,7 +584,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         send_message(MSG_RADIO_IN);
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -597,7 +596,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         }
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -605,7 +604,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         send_message(MSG_VFR_HUD);
     }
 
-    if (rover.gcs_out_of_time) {
+    if (gcs().out_of_time()) {
       return;
     }
 
@@ -647,6 +646,7 @@ void GCS_MAVLINK_Rover::handle_change_alt_request(AP_Mission::Mission_Command &c
 void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
 {
     switch (msg->msgid) {
+
     case MAVLINK_MSG_ID_REQUEST_DATA_STREAM:
         {
             handle_request_data_stream(msg, true);
@@ -660,6 +660,50 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
         uint8_t result = MAV_RESULT_UNSUPPORTED;
 
         switch (packet.command) {
+
+        case MAV_CMD_DO_SET_HOME: {
+            // assume failure
+            result = MAV_RESULT_FAILED;
+            if (is_equal(packet.param1, 1.0f)) {
+                // if param1 is 1, use current location
+                if (rover.set_home_to_current_location(true)) {
+                    result = MAV_RESULT_ACCEPTED;
+                }
+                break;
+            }
+            // ensure param1 is zero
+            if (!is_zero(packet.param1)) {
+                break;
+            }
+            // check frame type is supported
+            if (packet.frame != MAV_FRAME_GLOBAL &&
+                packet.frame != MAV_FRAME_GLOBAL_INT &&
+                packet.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT &&
+                packet.frame != MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
+                break;
+            }
+            // sanity check location
+            if (!check_latlng(packet.x, packet.y)) {
+                break;
+            }
+            Location new_home_loc {};
+            new_home_loc.lat = packet.x;
+            new_home_loc.lng = packet.y;
+            new_home_loc.alt = packet.z * 100;
+            // handle relative altitude
+            if (packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT || packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
+                if (rover.home_is_set == HOME_UNSET) {
+                    // cannot use relative altitude if home is not set
+                    break;
+                }
+                new_home_loc.alt += rover.ahrs.get_home().alt;
+            }
+            if (rover.set_home(new_home_loc, true)) {
+                result = MAV_RESULT_ACCEPTED;
+            }
+            break;
+        }
+
 #if MOUNT == ENABLED
         case MAV_CMD_DO_SET_ROI: {
             // param1 : /* Region of interest mode (not used)*/
@@ -803,31 +847,6 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
                 }
                 break;
 
-        case MAV_CMD_DO_SET_MODE:
-            switch (static_cast<uint16_t>(packet.param1)) {
-            case MAV_MODE_MANUAL_ARMED:
-            case MAV_MODE_MANUAL_DISARMED:
-                rover.set_mode(rover.mode_manual, MODE_REASON_GCS_COMMAND);
-                result = MAV_RESULT_ACCEPTED;
-                break;
-
-            case MAV_MODE_AUTO_ARMED:
-            case MAV_MODE_AUTO_DISARMED:
-                rover.set_mode(rover.mode_auto, MODE_REASON_GCS_COMMAND);
-                result = MAV_RESULT_ACCEPTED;
-                break;
-
-            case MAV_MODE_STABILIZE_DISARMED:
-            case MAV_MODE_STABILIZE_ARMED:
-                rover.set_mode(rover.mode_steering, MODE_REASON_GCS_COMMAND);
-                result = MAV_RESULT_ACCEPTED;
-                break;
-
-            default:
-                result = MAV_RESULT_UNSUPPORTED;
-            }
-            break;
-
         case MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN:
             if (is_equal(packet.param1, 1.0f) || is_equal(packet.param1, 3.0f)) {
                 // when packet.param1 == 3 we reboot to hold in bootloader
@@ -858,6 +877,10 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
         case MAV_CMD_GET_HOME_POSITION:
             if (rover.home_is_set != HOME_UNSET) {
                 send_home(rover.ahrs.get_home());
+                Location ekf_origin;
+                if (rover.ahrs.get_origin(ekf_origin)) {
+                    send_ekf_origin(ekf_origin);
+                }
                 result = MAV_RESULT_ACCEPTED;
             } else {
                 result = MAV_RESULT_FAILED;
@@ -876,6 +899,10 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
                     result = MAV_RESULT_ACCEPTED;
                 }
             } else {
+                // ensure param1 is zero
+                if (!is_zero(packet.param1)) {
+                    break;
+                }
                 Location new_home_loc {};
                 new_home_loc.lat = static_cast<int32_t>(packet.param5 * 1.0e7f);
                 new_home_loc.lng = static_cast<int32_t>(packet.param6 * 1.0e7f);
@@ -1120,9 +1147,11 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
                 break;
             }
             // check for supported coordinate frames
-            if (packet.coordinate_frame != MAV_FRAME_GLOBAL_INT &&
+            if (packet.coordinate_frame != MAV_FRAME_GLOBAL &&
+                packet.coordinate_frame != MAV_FRAME_GLOBAL_INT &&
                 packet.coordinate_frame != MAV_FRAME_GLOBAL_RELATIVE_ALT &&
                 packet.coordinate_frame != MAV_FRAME_GLOBAL_RELATIVE_ALT_INT &&
+                packet.coordinate_frame != MAV_FRAME_GLOBAL_TERRAIN_ALT &&
                 packet.coordinate_frame != MAV_FRAME_GLOBAL_TERRAIN_ALT_INT) {
                 break;
             }
@@ -1394,4 +1423,9 @@ bool GCS_MAVLINK_Rover::set_mode(const uint8_t mode)
 const AP_FWVersion &GCS_MAVLINK_Rover::get_fwver() const
 {
     return rover.fwver;
+}
+
+void GCS_MAVLINK_Rover::set_ekf_origin(const Location& loc)
+{
+    rover.set_ekf_origin(loc);
 }

@@ -13,7 +13,10 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Copter.h"
+
+#define FORCE_VERSION_H_INCLUDE
 #include "version.h"
+#undef FORCE_VERSION_H_INCLUDE
 
 const AP_HAL::HAL& hal = AP_HAL::get_HAL();
 
@@ -37,6 +40,7 @@ Copter::Copter(void) :
     guided_mode(Guided_TakeOff),
     rtl_state(RTL_InitialClimb),
     rtl_state_complete(false),
+    smart_rtl_state(SmartRTL_PathFollow),
     circle_pilot_yaw_override(false),
     simple_cos_yaw(1.0f),
     simple_sin_yaw(0.0f),
@@ -108,7 +112,6 @@ Copter::Copter(void) :
     input_manager(),
 #endif
     in_mavlink_delay(false),
-    gcs_out_of_time(false),
     param_loader(var_info)
 {
     memset(&current_loc, 0, sizeof(current_loc));

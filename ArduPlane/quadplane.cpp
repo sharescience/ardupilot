@@ -146,7 +146,7 @@ const AP_Param::GroupInfo QuadPlane::var_info[] = {
     // @Param: THR_MIN_PWM
     // @DisplayName: Minimum PWM output
     // @Description: This is the minimum PWM output for the quad motors
-    // @Units: Hz
+    // @Units: PWM
     // @Range: 800 2200
     // @Increment: 1
     // @User: Standard
@@ -155,7 +155,7 @@ const AP_Param::GroupInfo QuadPlane::var_info[] = {
     // @Param: THR_MAX_PWM
     // @DisplayName: Maximum PWM output
     // @Description: This is the maximum PWM output for the quad motors
-    // @Units: Hz
+    // @Units: PWM
     // @Range: 800 2200
     // @Increment: 1
     // @User: Standard
@@ -747,7 +747,7 @@ void QuadPlane::run_z_controller(void)
     if (now - last_pidz_active_ms > 2000) {
         // set alt target to current height on transition. This
         // starts the Z controller off with the right values
-        gcs().send_text(MAV_SEVERITY_INFO, "Reset alt target to %.1f", (double)inertial_nav.get_altitude());
+        gcs().send_text(MAV_SEVERITY_INFO, "Reset alt target to %.1f", (double)inertial_nav.get_altitude() / 100);
         set_alt_target_current();
         pos_control->set_desired_velocity_z(inertial_nav.get_velocity_z());
 
@@ -832,8 +832,9 @@ void QuadPlane::control_hover(void)
 
 void QuadPlane::init_loiter(void)
 {
-    // set target to current position
-    wp_nav->init_loiter_target();
+    Vector3f stopping_point;
+    wp_nav->get_loiter_stopping_point_xy(stopping_point);
+    wp_nav->init_loiter_target(stopping_point);
 
     // initialize vertical speed and acceleration
     pos_control->set_speed_z(-pilot_velocity_z_max, pilot_velocity_z_max);
@@ -2387,10 +2388,6 @@ bool QuadPlane::do_user_takeoff(float takeoff_altitude)
         gcs().send_text(MAV_SEVERITY_INFO, "Must be armed for takeoff");
         return false;
     }
-    if (guided_mode == 0) {
-        gcs().send_text(MAV_SEVERITY_INFO, "Q_GUIDED_MODE must be set to 1");
-        return false;
-    }
     if (is_flying()) {
         gcs().send_text(MAV_SEVERITY_INFO, "Already flying - no takeoff");
         return false;
@@ -2402,5 +2399,5 @@ bool QuadPlane::do_user_takeoff(float takeoff_altitude)
     motors->set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
     guided_start();
     guided_takeoff = true;
-    return false;
+    return true;
 }

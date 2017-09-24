@@ -44,6 +44,7 @@
 #endif
 
 #define GPS_BAUD_TIME_MS 1200
+#define GPS_TIMEOUT_MS 4000u
 
 // defines used to specify the mask position for use of different accuracy metrics in the blending algorithm
 #define BLEND_MASK_USE_HPOS_ACC     1
@@ -564,6 +565,7 @@ found_gps:
         state[instance].status = NO_FIX;
         drivers[instance] = new_gps;
         timing[instance].last_message_time_ms = now;
+        timing[instance].delta_time_ms = GPS_TIMEOUT_MS;
         new_gps->broadcast_gps_type();
     }
 }
@@ -616,7 +618,7 @@ void AP_GPS::update_instance(uint8_t instance)
     // has expired, re-initialise the GPS. This will cause GPS
     // detection to run again
     if (!result) {
-        if (tnow - timing[instance].last_message_time_ms > 4000) {
+        if (tnow - timing[instance].last_message_time_ms > GPS_TIMEOUT_MS) {
             // free the driver before we run the next detection, so we
             // don't end up with two allocated at any time
             delete drivers[instance];
@@ -626,8 +628,11 @@ void AP_GPS::update_instance(uint8_t instance)
             state[instance].hdop = GPS_UNKNOWN_DOP;
             state[instance].vdop = GPS_UNKNOWN_DOP;
             timing[instance].last_message_time_ms = tnow;
+            timing[instance].delta_time_ms = GPS_TIMEOUT_MS;
         }
     } else {
+        // delta will only be correct after parsing two messages
+        timing[instance].delta_time_ms = tnow - timing[instance].last_message_time_ms;
         timing[instance].last_message_time_ms = tnow;
         if (state[instance].status >= GPS_OK_FIX_2D) {
             timing[instance].last_fix_time_ms = tnow;
@@ -1300,7 +1305,6 @@ void AP_GPS::calc_blended_state(void)
     state[GPS_BLENDED_INSTANCE].have_speed_accuracy = false;
     state[GPS_BLENDED_INSTANCE].have_horizontal_accuracy = false;
     state[GPS_BLENDED_INSTANCE].have_vertical_accuracy = false;
-    state[GPS_BLENDED_INSTANCE].last_gps_time_ms = 0;
     memset(&state[GPS_BLENDED_INSTANCE].location, 0, sizeof(state[GPS_BLENDED_INSTANCE].location));
 
     _blended_antenna_offset.zero();
@@ -1369,7 +1373,7 @@ void AP_GPS::calc_blended_state(void)
 
     /*
      * Calculate an instantaneous weighted/blended average location from the available GPS instances and store in the _output_state.
-     * This will be statisticaly the most likely location, but will be not stable enough for direct use by the autopilot.
+     * This will be statistically the most likely location, but will be not stable enough for direct use by the autopilot.
     */
 
     // Use the GPS with the highest weighting as the reference position

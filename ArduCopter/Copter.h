@@ -93,6 +93,7 @@
 #include <AP_Button/AP_Button.h>
 #include <AP_Arming/AP_Arming.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
+#include <AP_SmartRTL/AP_SmartRTL.h>
 
 // Configuration
 #include "defines.h"
@@ -132,7 +133,6 @@
 // Local modules
 #include "Parameters.h"
 #include "avoidance_adsb.h"
-#include "version.h"
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
 #include <SITL/SITL.h>
@@ -169,18 +169,7 @@ public:
     };
 
 private:
-
-    const AP_FWVersion fwver {
-        major: FW_MAJOR,
-        minor: FW_MINOR,
-        patch: FW_PATCH,
-        fw_type: FW_TYPE,
-#ifndef GIT_VERSION
-        fw_string: THISFIRMWARE
-#else
-        fw_string: THISFIRMWARE " (" GIT_VERSION ")"
-#endif
-    };
+    static const AP_FWVersion fwver;
 
     // key aircraft parameters passed to multiple libraries
     AP_Vehicle::MultiCopter aparm;
@@ -418,6 +407,9 @@ private:
         bool terrain_used;
     } rtl_path;
 
+    // SmartRTL
+    SmartRTLState smart_rtl_state;  // records state of SmartRTL
+
     // Circle
     bool circle_pilot_yaw_override; // true if pilot is overriding yaw
 
@@ -619,9 +611,6 @@ private:
     // use this to prevent recursion during sensor init
     bool in_mavlink_delay;
 
-    // true if we are out of time in our event timeslice
-    bool gcs_out_of_time;
-
     // last valid RC input time
     uint32_t last_radio_update_ms;
 
@@ -782,6 +771,7 @@ private:
     void set_home_to_current_location_inflight();
     bool set_home_to_current_location(bool lock);
     bool set_home(const Location& loc, bool lock);
+    void set_ekf_origin(const Location& loc);
     bool far_from_EKF_origin(const Location& loc);
     void set_system_time_from_GPS();
     void exit_mission();
@@ -957,6 +947,14 @@ private:
     void rtl_land_run();
     void rtl_build_path(bool terrain_following_allowed);
     void rtl_compute_return_target(bool terrain_following_allowed);
+    bool smart_rtl_init(bool ignore_checks);
+    void smart_rtl_exit();
+    void smart_rtl_run();
+    void smart_rtl_wait_cleanup_run();
+    void smart_rtl_path_follow_run();
+    void smart_rtl_pre_land_position_run();
+    void smart_rtl_land();
+    void smart_rtl_save_position();
     bool sport_init(bool ignore_checks);
     void sport_run();
     bool stabilize_init(bool ignore_checks);
@@ -973,6 +971,7 @@ private:
 
     void ekf_check();
     bool ekf_over_threshold();
+    bool ekf_check_position_problem();
     void failsafe_ekf_event();
     void failsafe_ekf_off_event(void);
     void esc_calibration_startup_check();

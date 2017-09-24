@@ -82,7 +82,6 @@
 #include "Parameters.h"
 #include "AP_Arming_Sub.h"
 #include "GCS_Sub.h"
-#include "version.h"
 
 // libraries which are dependent on #defines in defines.h and/or config.h
 #if OPTFLOW == ENABLED
@@ -136,18 +135,7 @@ public:
     void loop() override;
 
 private:
-
-    const AP_FWVersion fwver {
-        major: FW_MAJOR,
-        minor: FW_MINOR,
-        patch: FW_PATCH,
-        fw_type: FW_TYPE,
-#ifndef GIT_VERSION
-        fw_string: THISFIRMWARE
-#else
-        fw_string: THISFIRMWARE " (" GIT_VERSION ")"
-#endif
-    };
+    static const AP_FWVersion fwver;
 
     // key aircraft parameters passed to multiple libraries
     AP_Vehicle::MultiCopter aparm;
@@ -451,9 +439,6 @@ private:
     // use this to prevent recursion during sensor init
     bool in_mavlink_delay;
 
-    // true if we are out of time in our event timeslice
-    bool gcs_out_of_time;
-
     // Top-level logic
     // setup the var_info table
     AP_Param param_loader;
@@ -545,6 +530,7 @@ private:
     void set_home_to_current_location_inflight();
     bool set_home_to_current_location(bool lock);
     bool set_home(const Location& loc, bool lock);
+    void set_ekf_origin(const Location& loc);
     bool far_from_EKF_origin(const Location& loc);
     void set_system_time_from_GPS();
     void exit_mission();

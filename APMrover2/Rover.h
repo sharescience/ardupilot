@@ -92,7 +92,6 @@
 #include "Parameters.h"
 #include "GCS_Mavlink.h"
 #include "GCS_Rover.h"
-#include "version.h"
 
 class Rover : public AP_HAL::HAL::Callbacks {
 public:
@@ -119,18 +118,7 @@ public:
     void loop(void) override;
 
 private:
-
-    const AP_FWVersion fwver {
-        major: FW_MAJOR,
-        minor: FW_MINOR,
-        patch: FW_PATCH,
-        fw_type: FW_TYPE,
-#ifndef GIT_VERSION
-        fw_string: THISFIRMWARE
-#else
-        fw_string: THISFIRMWARE " (" GIT_VERSION ")"
-#endif
-    };
+    static const AP_FWVersion fwver;
 
     // must be the first AP_Param variable declared to ensure its
     // constructor runs before the constructors of the other AP_Param
@@ -357,9 +345,6 @@ private:
     // use this to prevent recursion during sensor init
     bool in_mavlink_delay;
 
-    // true if we are out of time in our event timeslice
-    bool gcs_out_of_time;
-
     static const AP_Param::Info var_info[];
     static const LogStructure log_structure[];
 
@@ -454,6 +439,7 @@ private:
     void update_home_from_EKF();
     bool set_home_to_current_location(bool lock);
     bool set_home(const Location& loc, bool lock);
+    void set_ekf_origin(const Location& loc);
     void set_system_time_from_GPS();
     void update_home();
 

@@ -385,16 +385,6 @@ class disco(linux):
             CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_DISCO',
         )
 
-class raspilot(linux):
-    toolchain = 'arm-linux-gnueabihf'
-
-    def configure_env(self, cfg, env):
-        super(raspilot, self).configure_env(cfg, env)
-
-        env.DEFINES.update(
-            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_RASPILOT',
-        )
-
 class erlebrain2(linux):
     toolchain = 'arm-linux-gnueabihf'
 
@@ -423,16 +413,6 @@ class dark(linux):
 
         env.DEFINES.update(
             CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_DARK',
-        )
-
-class urus(linux):
-    toolchain = 'arm-linux-gnueabihf'
-
-    def configure_env(self, cfg, env):
-        super(urus, self).configure_env(cfg, env)
-
-        env.DEFINES.update(
-            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_URUS',
         )
 
 class pxfmini(linux):
@@ -501,6 +481,7 @@ class px4(Board):
             HAVE_OCLOEXEC = 0,
             HAVE_STD_NULLPTR_T = 0,
             USE_EVENT_MANAGER = 1,
+            UDF_AC_ATTITUDE_CONTROL = 1,
         )
         env.CXXFLAGS += [
             '-Wlogical-op',
