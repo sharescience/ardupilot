@@ -1,4 +1,4 @@
-#if UDF_AC_ATTITUDE_CONTROL == 0
+#if UDF_AC_ATTITUDE_CONTROL == 1
 #include "AC_AttitudeControl.h"
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Math/AP_Math.h>
