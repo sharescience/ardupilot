@@ -727,7 +727,7 @@ GCS_MAVLINK_Copter::data_stream_send(void)
         send_message(MSG_ADSB_VEHICLE);
     }
 
-    if (copter.gcs_out_of_time) return;
+    if (gcs().out_of_time()) return;
 
     if (stream_trigger(STREAM_PID)) {
     	send_message(MSG_ANGLE_TRACE);

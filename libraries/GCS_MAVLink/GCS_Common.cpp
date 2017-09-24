@@ -1300,7 +1300,7 @@ void GCS_MAVLINK::handle_set_mode(mavlink_message_t* msg)
     const MAV_RESULT result = _set_mode_common(base_mode, custom_mode);
 
     // send ACK or NAK
-    mavlink_msg_command_ack_send_buf(msg, chan, MAVLINK_MSG_ID_SET_MODE, result);
+    mavlink_msg_command_ack_send_buf(msg, chan, MAVLINK_MSG_ID_SET_MODE, result,0);
 }
 
 /*
