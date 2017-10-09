@@ -140,23 +140,6 @@ const AP_Param::GroupInfo AP_EventManager::var_info[] = {
     AP_GROUPEND
 };
 
-// Constructor
-AP_EventManager::AP_EventManager(event_response_fn_t  event_on_response,
-                                 write_event_log_fn_t write_event_on_log,
-                                 write_event_log_fn_t write_event_off_log,
-                                 AP_GPS*              gps)
-		: _gps(gps)
-		, _event_on_respond(event_on_response)
-		, _write_event_on_log(write_event_on_log)
-		, _write_event_off_log(write_event_off_log)
-		, _should_be_responded_id(0)
-{
-	_instance = this;
-
-	// setup parameter defaults
-    AP_Param::setup_object_defaults(this, var_info);
-}
-
 uint64_t AP_EventManager::tnow()
 {
 	return (_gps->time_epoch_usec() == 0) ? AP_HAL::micros64() : _gps->time_epoch_usec();
