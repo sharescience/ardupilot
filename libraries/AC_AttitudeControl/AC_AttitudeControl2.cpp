@@ -484,11 +484,11 @@ void AC_AttitudeControl::thrust_heading_rotation_angles(Quaternion& att_to_quat,
     // calculate the remaining rotation required after thrust vector is rotated
     Quaternion heading_quat = thrust_vec_correction_quat.inverse()*att_from_quat.inverse()*att_to_quat;
 
-    Vector3f rotation;
-    thrust_vec_correction_quat.to_axis_angle(rotation);
-    att_diff_angle.x = rotation.x;
-    att_diff_angle.y = rotation.y;
+    Quaternion attitude_error_quat = att_from_quat.inverse() * att_to_quat;
+    att_diff_angle.x = attitude_error_quat.get_euler_roll();
+    att_diff_angle.y = attitude_error_quat.get_euler_pitch();
 
+    Vector3f rotation;
     heading_quat.to_axis_angle(rotation);
     att_diff_angle.z = rotation.z;
     if(!is_zero(_p_angle_yaw.kP()) && fabsf(att_diff_angle.z) > AC_ATTITUDE_ACCEL_Y_CONTROLLER_MAX_RADSS/_p_angle_yaw.kP()){
