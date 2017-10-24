@@ -471,6 +471,10 @@ Compass::Compass(void) :
 bool
 Compass::init()
 {
+    for (uint8_t i=0; i<COMPASS_MAX_INSTANCES; i++) {
+        _state[i].dev_id.set_and_save(0);
+    }
+
     if (_compass_count == 0) {
         // detect available backends. Only called once
         _detect_backends();
