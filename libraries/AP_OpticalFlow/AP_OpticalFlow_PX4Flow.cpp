@@ -111,7 +111,6 @@ void AP_OpticalFlow_PX4Flow::update(void)
 // timer to read sensor
 void AP_OpticalFlow_PX4Flow::timer(void)
 {
-	hal.console->printf("\n optflow timer run\n");
     struct i2c_integral_frame frame;
     if (!dev->read_registers(REG_INTEGRAL_FRAME, (uint8_t *)&frame, sizeof(frame))) {
         return;
