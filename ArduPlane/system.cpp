@@ -446,8 +446,7 @@ void Plane::set_mode(enum FlightMode mode, mode_reason_t reason)
 
     adsb.set_is_auto_mode(auto_navigation_mode);
 
-    if (should_log(MASK_LOG_MODE))
-        DataFlash.Log_Write_Mode(control_mode);
+    DataFlash.Log_Write_Mode(control_mode, control_mode_reason);
 
     // update notify with flight mode change
     notify_flight_mode(control_mode);
@@ -464,7 +463,8 @@ void Plane::exit_mode(enum FlightMode mode)
         if (mission.state() == AP_Mission::MISSION_RUNNING) {
             mission.stop();
 
-            if (mission.get_current_nav_cmd().id == MAV_CMD_NAV_LAND)
+            if (mission.get_current_nav_cmd().id == MAV_CMD_NAV_LAND &&
+                !quadplane.is_vtol_land(mission.get_current_nav_cmd().id))
             {
                 landing.restart_landing_sequence();
             }
@@ -482,9 +482,9 @@ void Plane::check_long_failsafe()
         uint32_t radio_timeout_ms = failsafe.last_valid_rc_ms;
         if (failsafe.state == FAILSAFE_SHORT) {
             // time is relative to when short failsafe enabled
-            radio_timeout_ms = failsafe.ch3_timer_ms;
+            radio_timeout_ms = failsafe.short_timer_ms;
         }
-        if (failsafe.ch3_failsafe &&
+        if (failsafe.rc_failsafe &&
             (tnow - radio_timeout_ms) > g.long_fs_timeout*1000) {
             failsafe_long_on_event(FAILSAFE_LONG, MODE_REASON_RADIO_FAILSAFE);
         } else if (g.gcs_heartbeat_fs_enabled == GCS_FAILSAFE_HB_AUTO && control_mode == AUTO &&
@@ -511,7 +511,7 @@ void Plane::check_long_failsafe()
             (tnow - failsafe.last_heartbeat_ms) < timeout_seconds*1000) {
             failsafe_long_off_event(MODE_REASON_GCS_FAILSAFE);
         } else if (failsafe.state == FAILSAFE_LONG && 
-                   !failsafe.ch3_failsafe) {
+                   !failsafe.rc_failsafe) {
             failsafe_long_off_event(MODE_REASON_RADIO_FAILSAFE);
         }
     }
@@ -524,14 +524,14 @@ void Plane::check_short_failsafe()
     if (g.short_fs_action != SHORT_FS_ACTION_DISABLED &&
        failsafe.state == FAILSAFE_NONE &&
        flight_stage != AP_Vehicle::FixedWing::FLIGHT_LAND) {
-        // The condition is checked and the flag ch3_failsafe is set in radio.cpp
-        if(failsafe.ch3_failsafe) {
+        // The condition is checked and the flag rc_failsafe is set in radio.cpp
+        if(failsafe.rc_failsafe) {
             failsafe_short_on_event(FAILSAFE_SHORT, MODE_REASON_RADIO_FAILSAFE);
         }
     }
 
     if(failsafe.state == FAILSAFE_SHORT) {
-        if(!failsafe.ch3_failsafe || g.short_fs_action == SHORT_FS_ACTION_DISABLED) {
+        if(!failsafe.rc_failsafe || g.short_fs_action == SHORT_FS_ACTION_DISABLED) {
             failsafe_short_off_event(MODE_REASON_RADIO_FAILSAFE);
         }
     }

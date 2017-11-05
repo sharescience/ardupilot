@@ -218,13 +218,12 @@ void Rover::send_rangefinder(mavlink_channel_t chan)
  */
 void Rover::send_pid_tuning(mavlink_channel_t chan)
 {
-    const Vector3f &gyro = ahrs.get_gyro();
     const DataFlash_Class::PID_Info *pid_info;
     if (g.gcs_pid_mask & 1) {
         pid_info = &g2.attitude_control.get_steering_rate_pid().get_pid_info();
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_STEER,
-                                    pid_info->desired,
-                                    degrees(gyro.z),
+                                    degrees(pid_info->desired),
+                                    degrees(ahrs.get_yaw_rate_earth()),
                                     pid_info->FF,
                                     pid_info->P,
                                     pid_info->I,
@@ -237,9 +236,11 @@ void Rover::send_pid_tuning(mavlink_channel_t chan)
     }
     if (g.gcs_pid_mask & 2) {
         pid_info = &g2.attitude_control.get_throttle_speed_pid().get_pid_info();
+        float speed = 0.0f;
+        g2.attitude_control.get_forward_speed(speed);
         mavlink_msg_pid_tuning_send(chan, PID_TUNING_ACCZ,
                                     pid_info->desired,
-                                    0,
+                                    speed,
                                     0,
                                     pid_info->P,
                                     pid_info->I,
@@ -991,6 +992,25 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
         v[7] = packet.chan8_raw;
 
         hal.rcin->set_overrides(v, 8);
+
+        rover.failsafe.rc_override_timer = AP_HAL::millis();
+        rover.failsafe_trigger(FAILSAFE_EVENT_RC, false);
+        break;
+    }
+
+    case MAVLINK_MSG_ID_MANUAL_CONTROL:
+    {
+        if (msg->sysid != rover.g.sysid_my_gcs) {  // Only accept control from our gcs
+            break;
+        }
+
+        mavlink_manual_control_t packet;
+        mavlink_msg_manual_control_decode(msg, &packet);
+        
+        const int16_t roll = (packet.y == INT16_MAX) ? 0 : rover.channel_steer->get_radio_min() + (rover.channel_steer->get_radio_max() - rover.channel_steer->get_radio_min()) * (packet.y + 1000) / 2000.0f;
+        const int16_t throttle = (packet.z == INT16_MAX) ? 0 : rover.channel_throttle->get_radio_min() + (rover.channel_throttle->get_radio_max() - rover.channel_throttle->get_radio_min()) * (packet.z + 1000) / 2000.0f;
+        hal.rcin->set_override(uint8_t(rover.rcmap.roll() - 1), roll);
+        hal.rcin->set_override(uint8_t(rover.rcmap.throttle() - 1), throttle);
 
         rover.failsafe.rc_override_timer = AP_HAL::millis();
         rover.failsafe_trigger(FAILSAFE_EVENT_RC, false);

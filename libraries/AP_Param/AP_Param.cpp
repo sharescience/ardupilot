@@ -1986,7 +1986,7 @@ bool AP_Param::set_default_by_name(const char *name, float value)
 }
 
 /*
-  set a default value by name
+  set a value by name
  */
 bool AP_Param::set_by_name(const char *name, float value)
 {
@@ -2016,7 +2016,7 @@ bool AP_Param::set_by_name(const char *name, float value)
 }
 
 /*
-  set a default value by name
+  set and save a value by name
  */
 bool AP_Param::set_and_save_by_name(const char *name, float value)
 {

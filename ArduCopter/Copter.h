@@ -94,6 +94,8 @@
 #include <AP_Arming/AP_Arming.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
 #include <AP_SmartRTL/AP_SmartRTL.h>
+#include <AP_WheelEncoder/AP_WheelEncoder.h>
+#include <AP_Winch/AP_Winch.h>
 
 // Configuration
 #include "defines.h"
@@ -1082,6 +1084,8 @@ private:
     void read_receiver_rssi(void);
     void epm_update();
     void gripper_update();
+    void winch_init();
+    void winch_update();
     void terrain_update();
     void terrain_logging();
     bool terrain_use();
@@ -1157,6 +1161,7 @@ private:
 #if GRIPPER_ENABLED == ENABLED
     void do_gripper(const AP_Mission::Mission_Command& cmd);
 #endif
+    void do_winch(const AP_Mission::Mission_Command& cmd);
     bool verify_nav_wp(const AP_Mission::Mission_Command& cmd);
     bool verify_circle(const AP_Mission::Mission_Command& cmd);
     bool verify_spline_wp(const AP_Mission::Mission_Command& cmd);
@@ -1169,6 +1174,7 @@ private:
     void log_init(void);
     void init_capabilities(void);
     void dataflash_periodic(void);
+    void ins_periodic();
     void accel_cal_update(void);
 
 #if USE_EVENT_MANAGER == ENABLED

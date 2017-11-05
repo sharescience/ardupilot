@@ -116,6 +116,7 @@ public:
         k_motor12               = 85,
         k_dspoilerLeft2         = 86,           ///< differential spoiler 2 (left wing)
         k_dspoilerRight2        = 87,           ///< differential spoiler 2 (right wing)
+        k_winch                 = 88,
         k_nr_aux_servo_functions         ///< This must be the last enum value (only add new values _before_ this one)
     } Aux_servo_function_t;
 
@@ -405,6 +406,14 @@ public:
     static bool upgrade_parameters(const uint8_t old_keys[14], uint16_t aux_channel_mask, RCMapper *rcmap);
     static void upgrade_motors_servo(uint8_t ap_motors_key, uint8_t ap_motors_idx, uint8_t new_channel);
 
+    // given a zero-based motor channel, return the k_motor function for that channel
+    static SRV_Channel::Aux_servo_function_t get_motor_function(uint8_t channel) {
+        if (channel < 8) {
+            return SRV_Channel::Aux_servo_function_t(SRV_Channel::k_motor1+channel);
+        }
+        return SRV_Channel::Aux_servo_function_t((SRV_Channel::k_motor9+(channel-8)));
+    }
+    
 private:
     struct {
         bool k_throttle_reversible:1;

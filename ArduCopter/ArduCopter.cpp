@@ -127,6 +127,7 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
     SCHED_TASK(ten_hz_logging_loop,   10,    350),
     SCHED_TASK(twentyfive_hz_logging, 25,    110),
     SCHED_TASK(dataflash_periodic,    400,    300),
+    SCHED_TASK(ins_periodic,         400,     50),
     SCHED_TASK(perf_update,           0.1,    75),
     SCHED_TASK(read_receiver_rssi,    10,     75),
     SCHED_TASK(rpm_update,            10,    200),
@@ -145,6 +146,7 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #if USE_EVENT_MANAGER == ENABLED
     SCHED_TASK(event_response_update,  1,     75),
 #endif
+    SCHED_TASK(winch_update,          10,     50),
 #ifdef USERHOOK_FASTLOOP
     SCHED_TASK(userhook_FastLoop,    100,     75),
 #endif
@@ -440,6 +442,11 @@ void Copter::twentyfive_hz_logging()
 void Copter::dataflash_periodic(void)
 {
     DataFlash.periodic_tasks();
+}
+
+void Copter::ins_periodic(void)
+{
+    ins.periodic();
 }
 
 // three_hz_loop - 3.3hz loop
