@@ -23,7 +23,7 @@ void Plane::update_is_flying_5Hz(void)
                                     (gps.ground_speed_cm() >= ground_speed_thresh_cm);
 
     // airspeed at least 75% of stall speed?
-    bool airspeed_movement = ahrs.airspeed_estimate(&aspeed) && (aspeed >= (aparm.airspeed_min*0.75f));
+    bool airspeed_movement = ahrs.airspeed_estimate(&aspeed) && (aspeed >= (MAX(aparm.airspeed_min,2)*0.75f));
 
 
     if (quadplane.is_flying()) {
@@ -90,7 +90,7 @@ void Plane::update_is_flying_5Hz(void)
                 break;
 
             case AP_Vehicle::FixedWing::FLIGHT_LAND:
-                if (landing.is_on_approach() && fabsf(auto_state.sink_rate) > 0.2f) {
+                if (landing.is_on_approach() && auto_state.sink_rate > 0.2f) {
                     is_flying_bool = true;
                 }
                 break;

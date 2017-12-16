@@ -151,7 +151,7 @@ bool QuadPlane::tailsitter_transition_fw_complete(void)
     }
     if (labs(ahrs_view->pitch_sensor) > tailsitter.transition_angle*100 ||
         roll_cd > tailsitter.transition_angle*100 ||
-        AP_HAL::millis() - transition_start_ms > transition_time_ms) {
+        AP_HAL::millis() - transition_start_ms > uint32_t(transition_time_ms)) {
         return true;
     }
     // still waiting
@@ -216,10 +216,9 @@ void QuadPlane::tailsitter_speed_scaling(void)
     } else {
         scaling = constrain_float(hover_throttle / throttle, 1/scaling_max, scaling_max);
     }
-    const SRV_Channel::Aux_servo_function_t functions[3] = {
+    const SRV_Channel::Aux_servo_function_t functions[2] = {
         SRV_Channel::Aux_servo_function_t::k_aileron,
-        SRV_Channel::Aux_servo_function_t::k_elevator,
-        SRV_Channel::Aux_servo_function_t::k_rudder};
+        SRV_Channel::Aux_servo_function_t::k_elevator};
     for (uint8_t i=0; i<ARRAY_SIZE(functions); i++) {
         int32_t v = SRV_Channels::get_output_scaled(functions[i]);
         v *= scaling;

@@ -782,7 +782,8 @@ void GCS_MAVLINK_Copter::send_banner()
 
 void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
 {
-    uint8_t result = MAV_RESULT_FAILED;         // assume failure.  Each messages id is responsible for return ACK or NAK if required
+
+    MAV_RESULT result = MAV_RESULT_FAILED;         // assume failure.  Each messages id is responsible for return ACK or NAK if required
     uint8_t progress = 0;
 
     switch (msg->msgid) {
@@ -1236,7 +1237,9 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
             // param2 : throttle type (0=throttle percentage, 1=PWM, 2=pilot throttle channel pass-through. See MOTOR_TEST_THROTTLE_TYPE enum)
             // param3 : throttle (range depends upon param2)
             // param4 : timeout (in seconds)
-            result = copter.mavlink_motor_test_start(chan, (uint8_t)packet.param1, (uint8_t)packet.param2, (uint16_t)packet.param3, packet.param4);
+            // param5 : num_motors (in sequence)
+            result = copter.mavlink_motor_test_start(chan, (uint8_t)packet.param1, (uint8_t)packet.param2, (uint16_t)packet.param3,
+                                                     packet.param4, (uint8_t)packet.param5);
             break;
 
 #if GRIPPER_ENABLED == ENABLED
@@ -1507,11 +1510,18 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
 
         // send request
         if (!pos_ignore && !vel_ignore && acc_ignore) {
-            copter.guided_set_destination_posvel(pos_vector, vel_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
+            if (copter.guided_set_destination_posvel(pos_vector, vel_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
+                result = MAV_RESULT_FAILED;
+            }
         } else if (pos_ignore && !vel_ignore && acc_ignore) {
             copter.guided_set_velocity(vel_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
+            result = MAV_RESULT_ACCEPTED;
         } else if (!pos_ignore && vel_ignore && acc_ignore) {
-            if (!copter.guided_set_destination(pos_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+            if (copter.guided_set_destination(pos_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
                 result = MAV_RESULT_FAILED;
             }
         } else {
@@ -1553,7 +1563,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
          * bool force           = packet.type_mask & MAVLINK_SET_POS_TYPE_MASK_FORCE;
          */
 
-        Vector3f pos_ned;
+        Vector3f pos_neu_cm;  // position (North, East, Up coordinates) in centimeters
 
         if(!pos_ignore) {
             // sanity check location
@@ -1579,14 +1589,14 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
                 case MAV_FRAME_GLOBAL:
                 case MAV_FRAME_GLOBAL_INT:
                 default:
-                    // Copter does not support navigation to absolute altitudes. This convert the WGS84 altitude
-                    // to a home-relative altitude before passing it to the navigation controller
+                    // pv_location_to_vector does not support absolute altitudes.
+                    // Convert the absolute altitude to a home-relative altitude before calling pv_location_to_vector
                     loc.alt -= copter.ahrs.get_home().alt;
                     loc.flags.relative_alt = true;
                     loc.flags.terrain_alt = false;
                     break;
             }
-            pos_ned = copter.pv_location_to_vector(loc);
+            pos_neu_cm = copter.pv_location_to_vector(loc);
         }
 
         // prepare yaw
@@ -1602,11 +1612,18 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         }
 
         if (!pos_ignore && !vel_ignore && acc_ignore) {
-            copter.guided_set_destination_posvel(pos_ned, Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f), !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
+            if (copter.guided_set_destination_posvel(pos_neu_cm, Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f), !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
+                result = MAV_RESULT_FAILED;
+            }
         } else if (pos_ignore && !vel_ignore && acc_ignore) {
             copter.guided_set_velocity(Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f), !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
+            result = MAV_RESULT_ACCEPTED;
         } else if (!pos_ignore && vel_ignore && acc_ignore) {
-            if (!copter.guided_set_destination(pos_ned, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+            if (copter.guided_set_destination(pos_neu_cm, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+                result = MAV_RESULT_ACCEPTED;
+            } else {
                 result = MAV_RESULT_FAILED;
             }
         } else {
@@ -1830,11 +1847,6 @@ AP_Mission *GCS_MAVLINK_Copter::get_mission()
 Compass *GCS_MAVLINK_Copter::get_compass() const
 {
     return &copter.compass;
-}
-
-AP_GPS *GCS_MAVLINK_Copter::get_gps() const
-{
-    return &copter.gps;
 }
 
 AP_Camera *GCS_MAVLINK_Copter::get_camera() const

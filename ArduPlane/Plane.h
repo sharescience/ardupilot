@@ -274,7 +274,7 @@ private:
 
     // Camera
 #if CAMERA == ENABLED
-    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, gps, ahrs);
+    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, ahrs);
 #endif
 
 #if OPTFLOW == ENABLED
@@ -452,11 +452,11 @@ private:
         // should we fly inverted?
         bool inverted_flight:1;
 
-        // should we disable cross-tracking for the next waypoint?
-        bool next_wp_no_crosstrack:1;
+        // should we enable cross-tracking for the next waypoint?
+        bool next_wp_crosstrack:1;
 
         // should we use cross-tracking for this waypoint?
-        bool no_crosstrack:1;
+        bool crosstrack:1;
 
         // in FBWA taildragger takeoff mode
         bool fbwa_tdrag_takeoff_mode:1;
@@ -857,7 +857,7 @@ private:
     void set_target_altitude_proportion(const Location &loc, float proportion);
     void constrain_target_altitude_location(const Location &loc1, const Location &loc2);
     int32_t calc_altitude_error_cm(void);
-    void check_minimum_altitude(void);
+    void check_fbwb_minimum_altitude(void);
     void reset_offset_altitude(void);
     void set_offset_altitude_location(const Location &loc);
     bool above_location_current(const Location &loc);
@@ -906,7 +906,7 @@ private:
     void update_events(void);
     uint8_t max_fencepoints(void);
     Vector2l get_fence_point_with_index(unsigned i);
-    void set_fence_point_with_index(Vector2l &point, unsigned i);
+    void set_fence_point_with_index(const Vector2l &point, unsigned i);
     void geofence_load(void);
     bool geofence_present(void);
     void geofence_update_pwm_enabled_state();
@@ -919,6 +919,7 @@ private:
     bool geofence_stickmixing(void);
     void geofence_send_status(mavlink_channel_t chan);
     bool geofence_breached(void);
+    void geofence_disable_and_send_error_msg(const char *errorMsg);
     void disarm_if_autoland_complete();
     float tecs_hgt_afe(void);
     void set_nav_controller(void);

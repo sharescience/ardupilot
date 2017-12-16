@@ -67,6 +67,7 @@
 #include <AP_VisualOdom/AP_VisualOdom.h>
 #include <AP_WheelEncoder/AP_WheelEncoder.h>
 #include <APM_Control/AR_AttitudeControl.h>
+#include <AP_SmartRTL/AP_SmartRTL.h>
 #include <DataFlash/DataFlash.h>
 #include <Filter/AverageFilter.h>                   // Mode Filter from Filter library
 #include <Filter/Butter.h>                          // Filter library - butterworth filter
@@ -104,12 +105,14 @@ public:
 #endif
     friend class GCS_Rover;
     friend class Mode;
+    friend class ModeAcro;
     friend class ModeAuto;
     friend class ModeGuided;
     friend class ModeHold;
     friend class ModeSteering;
     friend class ModeManual;
     friend class ModeRTL;
+    friend class ModeSmartRTL;
 
     Rover(void);
 
@@ -211,7 +214,7 @@ private:
 
     // Camera
 #if CAMERA == ENABLED
-    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, gps, ahrs);
+    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, ahrs);
 #endif
 
     // Camera/Antenna mount tracking and stabilisation stuff
@@ -378,10 +381,12 @@ private:
     ModeInitializing mode_initializing;
     ModeHold mode_hold;
     ModeManual mode_manual;
+    ModeAcro mode_acro;
     ModeGuided mode_guided;
     ModeAuto mode_auto;
     ModeSteering mode_steering;
     ModeRTL mode_rtl;
+    ModeSmartRTL mode_smartrtl;
 
     // cruise throttle and speed learning
     struct {
@@ -560,12 +565,13 @@ private:
     void resetPerfData(void);
     void check_usb_mux(void);
     void print_mode(AP_HAL::BetterStream *port, uint8_t mode);
-    void notify_mode(enum mode new_mode);
+    void notify_mode(const Mode *new_mode);
     uint8_t check_digital_pin(uint8_t pin);
     bool should_log(uint32_t mask);
     void change_arm_state(void);
     bool arm_motors(AP_Arming::ArmingMethod method);
     bool disarm_motors(void);
+    void smart_rtl_update();
 
     // test.cpp
     void print_hit_enter();
@@ -581,7 +587,7 @@ public:
     // Motor test
     void motor_test_output();
     bool mavlink_motor_test_check(mavlink_channel_t chan, bool check_rc, uint8_t motor_seq, uint8_t throttle_type, int16_t throttle_value);
-    uint8_t mavlink_motor_test_start(mavlink_channel_t chan, uint8_t motor_seq, uint8_t throttle_type, int16_t throttle_value, float timeout_sec);
+    MAV_RESULT mavlink_motor_test_start(mavlink_channel_t chan, uint8_t motor_seq, uint8_t throttle_type, int16_t throttle_value, float timeout_sec);
     void motor_test_stop();
 };
 

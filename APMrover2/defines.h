@@ -17,7 +17,16 @@
 enum ch7_option {
     CH7_DO_NOTHING      = 0,
     CH7_SAVE_WP         = 1,
-    CH7_LEARN_CRUISE    = 2
+    CH7_LEARN_CRUISE    = 2,
+    CH7_ARM_DISARM      = 3,
+    CH7_MANUAL          = 4,
+    CH7_ACRO            = 5,
+    CH7_STEERING        = 6,
+    CH7_HOLD            = 7,
+    CH7_AUTO            = 8,
+    CH7_RTL             = 9,
+    CH7_SMART_RTL       = 10,
+    CH7_GUIDED          = 11
 };
 
 // HIL enumerations
@@ -28,10 +37,12 @@ enum ch7_option {
 // ----------------
 enum mode {
     MANUAL       = 0,
+    ACRO         = 1,
     STEERING     = 3,
     HOLD         = 4,
     AUTO         = 10,
     RTL          = 11,
+    SMART_RTL    = 12,
     GUIDED       = 15,
     INITIALISING = 16
 };
@@ -119,6 +130,13 @@ enum aux_switch_pos {
     AUX_SWITCH_LOW,
     AUX_SWITCH_MIDDLE,
     AUX_SWITCH_HIGH
+};
+
+enum pilot_steer_type_t {
+    PILOT_STEER_TYPE_DEFAULT = 0,
+    PILOT_STEER_TYPE_TWO_PADDLES = 1,
+    PILOT_STEER_TYPE_DIR_REVERSED_WHEN_REVERSING = 2,
+    PILOT_STEER_TYPE_DIR_UNCHANGED_WHEN_REVERSING = 3,
 };
 
 #define AUX_SWITCH_PWM_TRIGGER_HIGH 1800   // pwm value above which the ch7 or ch8 option will be invoked

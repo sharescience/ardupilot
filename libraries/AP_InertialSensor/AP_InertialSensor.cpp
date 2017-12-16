@@ -21,6 +21,7 @@
 #include "AP_InertialSensor_QURT.h"
 #include "AP_InertialSensor_SITL.h"
 #include "AP_InertialSensor_qflight.h"
+#include "AP_InertialSensor_RST.h"
 
 /* Define INS_TIMING_DEBUG to track down scheduling issues with the main loop.
  * Output is on the debug console. */
@@ -833,6 +834,17 @@ AP_InertialSensor::detect_backends(void)
         _add_backend(backend);
     } else {
         hal.console->printf("aero: onboard IMU not detected\n");
+    }
+#elif HAL_INS_DEFAULT == HAL_INS_RST
+    AP_InertialSensor_Backend *backend = AP_InertialSensor_RST::probe(*this, hal.spi->get_device(HAL_INS_RST_G_NAME), 
+                                                                             hal.spi->get_device(HAL_INS_RST_A_NAME),
+                                                                             HAL_INS_DEFAULT_G_ROTATION,
+                                                                             HAL_INS_DEFAULT_A_ROTATION);
+    if (backend) {
+        _add_backend(backend);
+        hal.console->printf("RST: IMU detected\n");
+    } else {
+        hal.console->printf("RST: IMU not detected\n");
     }
 #else
     #error Unrecognised HAL_INS_TYPE setting
@@ -1778,7 +1790,7 @@ bool AP_InertialSensor::get_primary_accel_cal_sample_avg(uint8_t sample_num, Vec
 /*
   perform a simple 1D accel calibration, returning mavlink result code
  */
-uint8_t AP_InertialSensor::simple_accel_cal(AP_AHRS &ahrs)
+MAV_RESULT AP_InertialSensor::simple_accel_cal(AP_AHRS &ahrs)
 {
     uint8_t num_accels = MIN(get_accel_count(), INS_MAX_INSTANCES);
     Vector3f last_average[INS_MAX_INSTANCES];
@@ -1882,7 +1894,7 @@ uint8_t AP_InertialSensor::simple_accel_cal(AP_AHRS &ahrs)
         }
     }
 
-    uint8_t result = MAV_RESULT_ACCEPTED;
+    MAV_RESULT result = MAV_RESULT_ACCEPTED;
 
     // see if we've passed
     for (uint8_t k=0; k<num_accels; k++) {

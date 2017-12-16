@@ -405,7 +405,24 @@ const AP_Param::GroupInfo QuadPlane::var_info[] = {
     // @Description: This provides a set of additional control options for quadplanes. LevelTransition means that the wings should be held level to within LEVEL_ROLL_LIMIT degrees during transition to fixed wing flight. If AllowFWTakeoff bit is not set then fixed wing takeoff on quadplanes will instead perform a VTOL takeoff. If AllowFWLand bit is not set then fixed wing land on quadplanes will instead perform a VTOL land.
     // @Bitmask: 0:LevelTransition,1:AllowFWTakeoff,2:AllowFWLand
     AP_GROUPINFO("OPTIONS", 58, QuadPlane, options, 0),
+
+    AP_SUBGROUPEXTENSION("",59, QuadPlane, var_info2),
     
+    AP_GROUPEND
+};
+
+// second table of user settable parameters for quadplanes, this
+// allows us to go beyond the 64 parameter limit
+const AP_Param::GroupInfo QuadPlane::var_info2[] = {
+    // @Param: TRANS_DECEL
+    // @DisplayName: Transition deceleration
+    // @Description: This is deceleration rate that will be used in calculating the stopping distance when transitioning from fixed wing flight to multicopter flight.
+    // @Units: m/s/s
+    // @Increment: 0.1
+    // @Range: 0.2 5
+    // @User: Standard
+    AP_GROUPINFO("TRANS_DECEL", 1, QuadPlane, transition_decel, 2.0),
+
     AP_GROUPEND
 };
 
@@ -446,6 +463,7 @@ QuadPlane::QuadPlane(AP_AHRS_NavEKF &_ahrs) :
     ahrs(_ahrs)
 {
     AP_Param::setup_object_defaults(this, var_info);
+    AP_Param::setup_object_defaults(this, var_info2);
 }
 
 
@@ -845,8 +863,18 @@ void QuadPlane::control_hover(void)
 
 void QuadPlane::init_loiter(void)
 {
-    Vector3f stopping_point;
-    wp_nav->get_loiter_stopping_point_xy(stopping_point);
+    /*
+      calculate stopping point based on Q_TRANS_DECEL. This allows the
+      user to setup for a more or less agressive stop when entering
+      QLOITER
+     */
+    Vector3f stopping_point = inertial_nav.get_position();
+    Vector3f vel = inertial_nav.get_velocity();
+    if (!vel.is_zero()) {
+        vel.z = 0;
+        stopping_point += vel.normalized() * stopping_distance() * 100;
+    }
+    
     wp_nav->init_loiter_target(stopping_point);
 
     // initialize vertical speed and acceleration
@@ -861,6 +889,9 @@ void QuadPlane::init_loiter(void)
 
     // remember initial pitch
     loiter_initial_pitch_cd = MAX(plane.ahrs.pitch_sensor, 0);
+
+    // prevent re-init of target position
+    last_loiter_ms = AP_HAL::millis();
 }
 
 void QuadPlane::init_land(void)
@@ -986,11 +1017,11 @@ void QuadPlane::control_loiter()
     plane.nav_pitch_cd = wp_nav->get_pitch();
 
     uint32_t now = AP_HAL::millis();
-    if (now - last_pidz_init_ms < (uint32_t)transition_time_ms && !is_tailsitter()) {
+    if (now - last_pidz_init_ms < (uint32_t)transition_time_ms*2 && !is_tailsitter()) {
         // we limit pitch during initial transition
         float pitch_limit_cd = linear_interpolate(loiter_initial_pitch_cd, aparm.angle_max,
                                                   now,
-                                                  last_pidz_init_ms, last_pidz_init_ms+transition_time_ms);
+                                                  last_pidz_init_ms, last_pidz_init_ms+transition_time_ms*2);
         if (plane.nav_pitch_cd > pitch_limit_cd) {
             plane.nav_pitch_cd = pitch_limit_cd;
             pos_control->set_limit_accel_xy();            
@@ -1218,6 +1249,11 @@ void QuadPlane::update_transition(void)
 
     float aspeed;
     bool have_airspeed = ahrs.airspeed_estimate(&aspeed);
+
+    // tailsitters use angle wait, not airspeed wait
+    if (is_tailsitter() && transition_state == TRANSITION_AIRSPEED_WAIT) {
+        transition_state = TRANSITION_ANGLE_WAIT_FW;
+    }
     
     /*
       see if we should provide some assistance
@@ -2168,7 +2204,7 @@ bool QuadPlane::verify_vtol_takeoff(const AP_Mission::Mission_Command &cmd)
     if (plane.current_loc.alt < plane.next_WP_loc.alt) {
         return false;
     }
-    transition_state = TRANSITION_AIRSPEED_WAIT;
+    transition_state = is_tailsitter() ? TRANSITION_ANGLE_WAIT_FW : TRANSITION_AIRSPEED_WAIT;
     plane.TECS_controller.set_pitch_max_limit(transition_pitch_max);
     set_alt_target_current();
 
@@ -2556,4 +2592,15 @@ bool QuadPlane::in_transition(void) const
     return available() && assisted_flight &&
         (transition_state == TRANSITION_AIRSPEED_WAIT ||
          transition_state == TRANSITION_TIMER);
+}
+
+/*
+  calculate current stopping distance for a quadplane in fixed wing flight
+ */
+float QuadPlane::stopping_distance(void)
+{
+    // use v^2/(2*accel). This is only quite approximate as the drag
+    // varies with pitch, but it gives something for the user to
+    // control the transition distance in a reasonable way
+    return plane.ahrs.groundspeed_vector().length_squared() / (2 * transition_decel);
 }

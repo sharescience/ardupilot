@@ -908,11 +908,11 @@ GCS_MAVLINK::update(uint32_t max_time_us)
 /*
   send the SYSTEM_TIME message
  */
-void GCS_MAVLINK::send_system_time(AP_GPS &gps)
+void GCS_MAVLINK::send_system_time()
 {
     mavlink_msg_system_time_send(
         chan,
-        gps.time_epoch_usec(),
+        AP::gps().time_epoch_usec(),
         AP_HAL::millis());
 }
 
@@ -1605,7 +1605,7 @@ void GCS_MAVLINK::send_accelcal_vehicle_position(uint32_t position)
   motors. That can be dangerous when a preflight reboot is done with
   the pilot close to the aircraft and can also damage the aircraft
  */
-uint8_t GCS_MAVLINK::handle_preflight_reboot(const mavlink_command_long_t &packet, bool disable_overrides)
+MAV_RESULT GCS_MAVLINK::handle_preflight_reboot(const mavlink_command_long_t &packet, bool disable_overrides)
 {
     if (is_equal(packet.param1,1.0f) || is_equal(packet.param1,3.0f)) {
         if (disable_overrides) {
@@ -1729,12 +1729,7 @@ void GCS_MAVLINK::handle_statustext(mavlink_message_t *msg)
 
 void GCS_MAVLINK::handle_common_gps_message(mavlink_message_t *msg)
 {
-    AP_GPS *gps = get_gps();
-    if (gps == nullptr) {
-        return;
-    }
-
-    gps->handle_msg(msg);
+    AP::gps().handle_msg(msg);
 }
 
 
@@ -2207,36 +2202,31 @@ void GCS_MAVLINK::send_hwstatus()
 
 bool GCS_MAVLINK::try_send_gps_message(const enum ap_message id)
 {
-    AP_GPS *gps = get_gps();
-    if (gps == nullptr) {
-        return true;
-    }
-
     bool ret = true;
     switch(id) {
     case MSG_SYSTEM_TIME:
         CHECK_PAYLOAD_SIZE(SYSTEM_TIME);
-        send_system_time(*gps);
+        send_system_time();
         ret = true;
         break;
     case MSG_GPS_RAW:
         CHECK_PAYLOAD_SIZE(GPS_RAW_INT);
-        gps->send_mavlink_gps_raw(chan);
+        AP::gps().send_mavlink_gps_raw(chan);
         ret = true;
         break;
     case MSG_GPS_RTK:
         CHECK_PAYLOAD_SIZE(GPS_RTK);
-        gps->send_mavlink_gps_rtk(chan, 0);
+        AP::gps().send_mavlink_gps_rtk(chan, 0);
         ret = true;
         break;
     case MSG_GPS2_RAW:
         CHECK_PAYLOAD_SIZE(GPS2_RAW);
-        gps->send_mavlink_gps2_raw(chan);
+        AP::gps().send_mavlink_gps2_raw(chan);
         ret = true;
         break;
     case MSG_GPS2_RTK:
         CHECK_PAYLOAD_SIZE(GPS2_RTK);
-        gps->send_mavlink_gps_rtk(chan, 1);
+        AP::gps().send_mavlink_gps_rtk(chan, 1);
         ret = true;
         break;
     default:

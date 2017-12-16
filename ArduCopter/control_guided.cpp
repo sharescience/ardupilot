@@ -110,7 +110,7 @@ void Copter::guided_vel_control_start()
     pos_control->set_jerk_xy_to_default();
 
     // initialize vertical speeds and acceleration
-    pos_control->set_speed_z(-g.pilot_velocity_z_max, g.pilot_velocity_z_max);
+    pos_control->set_speed_z(-get_pilot_speed_dn(), g.pilot_speed_up);
     pos_control->set_accel_z(g.pilot_accel_z);
 
     // initialise velocity controller
@@ -260,12 +260,22 @@ void Copter::guided_set_velocity(const Vector3f& velocity, bool use_yaw, float y
 }
 
 // set guided mode posvel target
-void Copter::guided_set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, bool use_yaw, float yaw_cd, bool use_yaw_rate, float yaw_rate_cds, bool relative_yaw)
+bool Copter::guided_set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, bool use_yaw, float yaw_cd, bool use_yaw_rate, float yaw_rate_cds, bool relative_yaw)
 {
     // check we are in velocity control mode
     if (guided_mode != Guided_PosVel) {
         guided_posvel_control_start();
     }
+
+#if AC_FENCE == ENABLED
+    // reject destination if outside the fence
+    Location_Class dest_loc(destination);
+    if (!fence.check_destination_within_fence(dest_loc)) {
+        Log_Write_Error(ERROR_SUBSYSTEM_NAVIGATION, ERROR_CODE_DEST_OUTSIDE_FENCE);
+        // failure is propagated to GCS with NAK
+        return false;
+    }
+#endif
 
     // set yaw state
     guided_set_yaw_state(use_yaw, yaw_cd, use_yaw_rate, yaw_rate_cds, relative_yaw);
@@ -278,6 +288,7 @@ void Copter::guided_set_destination_posvel(const Vector3f& destination, const Ve
 
     // log target
     Log_Write_GuidedTarget(guided_mode, destination, velocity);
+    return true;
 }
 
 // set guided mode angle target
@@ -757,7 +768,7 @@ bool Copter::guided_limit_check()
 
     // check if we have gone beyond horizontal limit
     if (guided_limit.horiz_max_cm > 0.0f) {
-        float horiz_move = pv_get_horizontal_distance_cm(guided_limit.start_pos, curr_pos);
+        float horiz_move = get_horizontal_distance_cm(guided_limit.start_pos, curr_pos);
         if (horiz_move > guided_limit.horiz_max_cm) {
             return true;
         }
