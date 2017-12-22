@@ -1418,7 +1418,8 @@ void GCS_MAVLINK::send_autopilot_version() const
         (uint8_t *)os_custom_version,
         vendor_id,
         product_id,
-        uid
+        uid,
+		0
     );
 }
 
