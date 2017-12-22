@@ -93,7 +93,7 @@ MAV_RESULT Copter::mavlink_compassmot(mavlink_channel_t chan)
     }
 
     // send back initial ACK
-    mavlink_msg_command_ack_send(chan, MAV_CMD_PREFLIGHT_CALIBRATION,0,0);
+    mavlink_msg_command_ack_send(chan, MAV_CMD_PREFLIGHT_CALIBRATION,0,0,0,0,0);
 
     // flash leds
     AP_Notify::flags.esc_calibration = true;

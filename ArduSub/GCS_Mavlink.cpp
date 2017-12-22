@@ -1030,7 +1030,7 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0, 0, 0, 0);
         break;
     }
 
@@ -1249,7 +1249,7 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
 
                 result = MAV_RESULT_ACCEPTED;
                 // send ack before we reboot
-                mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0);
+                mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0, 0, 0, 0);
 
                 AP_Notify::flags.firmware_update = 1;
                 sub.update_notify();
@@ -1315,7 +1315,7 @@ void GCS_MAVLINK_Sub::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0, 0, 0, 0);
 
         break;
     }

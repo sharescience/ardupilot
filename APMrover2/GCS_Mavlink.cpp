@@ -743,7 +743,7 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result,0);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, 0, 0, 0, 0);
         break;
     }
 
@@ -965,6 +965,9 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
                 chan,
                 packet.command,
                 result,
+				0,
+				0,
+				0,
 				0);
 
             break;

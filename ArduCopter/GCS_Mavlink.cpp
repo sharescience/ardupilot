@@ -953,7 +953,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, progress);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, progress, 0, 0, 0);
         break;
     }
 
@@ -1381,7 +1381,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         }
 
         // send ACK or NAK
-        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, progress);
+        mavlink_msg_command_ack_send_buf(msg, chan, packet.command, result, progress, 0, 0, 0);
 
         break;
     }

@@ -599,6 +599,9 @@ void GCS_MAVLINK_Tracker::handleMessage(mavlink_message_t* msg)
             chan,
             packet.command,
             result,
+			0,
+			0,
+			0,
 			0);
         
         break;
