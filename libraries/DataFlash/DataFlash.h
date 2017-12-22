@@ -22,6 +22,8 @@
 #include <AP_Rally/AP_Rally.h>
 #include <AP_Beacon/AP_Beacon.h>
 #include <AP_Proximity/AP_Proximity.h>
+#include <AP_InertialSensor/AP_InertialSensor_Backend.h>
+
 #include <stdint.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
@@ -70,6 +72,7 @@ public:
 
     // initialisation
     void Init(const struct LogStructure *structure, uint8_t num_types);
+
     bool CardInserted(void);
 
     // erase handling
@@ -106,6 +109,18 @@ public:
     void Log_Write_RFND(const RangeFinder &rangefinder);
     void Log_Write_IMU(const AP_InertialSensor &ins);
     void Log_Write_IMUDT(const AP_InertialSensor &ins, uint64_t time_us, uint8_t imu_mask);
+    bool Log_Write_ISBH(uint16_t seqno,
+                        AP_InertialSensor::IMU_SENSOR_TYPE sensor_type,
+                        uint8_t instance,
+                        uint16_t multiplier,
+                        uint16_t sample_count,
+                        uint64_t sample_us,
+                        float sample_rate_hz);
+    bool Log_Write_ISBD(uint16_t isb_seqno,
+                        uint16_t seqno,
+                        const int16_t x[32],
+                        const int16_t y[32],
+                        const int16_t z[32]);
     void Log_Write_Vibration(const AP_InertialSensor &ins);
     void Log_Write_RCIN(void);
     void Log_Write_RCOUT(void);
@@ -121,9 +136,9 @@ public:
     void Log_Write_Radio(const mavlink_radio_t &packet);
     void Log_Write_Message(const char *message);
     void Log_Write_MessageF(const char *fmt, ...);
-    void Log_Write_CameraInfo(enum LogMessages msg, const AP_AHRS &ahrs, const AP_GPS &gps, const Location &current_loc);
-    void Log_Write_Camera(const AP_AHRS &ahrs, const AP_GPS &gps, const Location &current_loc);
-    void Log_Write_Trigger(const AP_AHRS &ahrs, const AP_GPS &gps, const Location &current_loc);    
+    void Log_Write_CameraInfo(enum LogMessages msg, const AP_AHRS &ahrs, const Location &current_loc);
+    void Log_Write_Camera(const AP_AHRS &ahrs, const Location &current_loc);
+    void Log_Write_Trigger(const AP_AHRS &ahrs, const Location &current_loc);
     void Log_Write_ESC(void);
     void Log_Write_Airspeed(AP_Airspeed &airspeed);
     void Log_Write_Attitude(AP_AHRS &ahrs, const Vector3f &targets);
@@ -149,6 +164,8 @@ public:
     void Log_Write_SRTL(bool active, uint16_t num_points, uint16_t max_points, uint8_t action, const Vector3f& point);
 
     void Log_Write(const char *name, const char *labels, const char *fmt, ...);
+    void Log_Write(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, ...);
+    void Log_WriteV(const char *name, const char *labels, const char *units, const char *mults, const char *fmt, va_list arg_list);
 
     // This structure provides information on the internal member data of a PID for logging purposes
     struct PID_Info {
@@ -197,6 +214,8 @@ public:
     } _params;
 
     const struct LogStructure *structure(uint16_t num) const;
+    const struct UnitStructure *unit(uint16_t num) const;
+    const struct MultiplierStructure *multiplier(uint16_t num) const;
 
     // methods for mavlink SYS_STATUS message (send_extended_status1)
     // these methods cover only the first logging backend used -
@@ -211,10 +230,17 @@ public:
     void handle_log_send(class GCS_MAVLINK &);
     bool in_log_download() const { return _in_log_download; }
 
+    float quiet_nanf() const { return nanf("0x4152"); } // "AR"
+    double quiet_nan() const { return nan("0x4152445550490a"); } // "ARDUPI"
+
 protected:
 
     const struct LogStructure *_structures;
     uint8_t _num_types;
+    const struct UnitStructure *_units = log_Units;
+    const struct MultiplierStructure *_multipliers = log_Multipliers;
+    const uint8_t _num_units = (sizeof(log_Units) / sizeof(log_Units[0]));
+    const uint8_t _num_multipliers = (sizeof(log_Multipliers) / sizeof(log_Multipliers[0]));
 
     /* Write a block with specified importance */
     /* might be useful if you have a boolean indicating a message is
@@ -249,11 +275,13 @@ private:
         const char *name;
         const char *fmt;
         const char *labels;
+        const char *units;
+        const char *mults;
     } *log_write_fmts;
 
     // return (possibly allocating) a log_write_fmt for a name
-    struct log_write_fmt *msg_fmt_for_name(const char *name, const char *labels, const char *fmt);
-    
+    struct log_write_fmt *msg_fmt_for_name(const char *name, const char *labels, const char *units, const char *mults, const char *fmt);
+
     // returns true if msg_type is associated with a message
     bool msg_type_in_use(uint8_t msg_type) const;
 
@@ -301,6 +329,8 @@ private:
     void validate_structures(const struct LogStructure *logstructures, const uint8_t num_types);
     void dump_structure_field(const struct LogStructure *logstructure, const char *label, const uint8_t fieldnum);
     void dump_structures(const struct LogStructure *logstructures, const uint8_t num_types);
+    const char* unit_name(const uint8_t unit_id);
+    double multiplier_name(const uint8_t multiplier_id);
 
     void Log_Write_EKF_Timing(const char *name, uint64_t time_us, const struct ekf_timing &timing);
 

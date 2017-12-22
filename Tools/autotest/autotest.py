@@ -77,15 +77,20 @@ def build_all():
 
 
 def build_binaries():
-    """Run the build_binaries.sh script."""
-    print("Running build_binaries.sh")
+    """Run the build_binaries.py script."""
+    print("Running build_binaries.py")
     # copy the script as it changes git branch, which can change the script while running
-    orig = util.reltopdir('Tools/scripts/build_binaries.sh')
-    copy = util.reltopdir('./build_binaries.sh')
+    orig = util.reltopdir('Tools/scripts/build_binaries.py')
+    copy = util.reltopdir('./build_binaries.py')
     shutil.copy2(orig, copy)
 
+    # also copy generate_manifest library:
+    orig_gm = util.reltopdir('Tools/scripts/generate_manifest.py')
+    copy_gm = util.reltopdir('./generate_manifest.py')
+    shutil.copy2(orig_gm, copy_gm)
+
     if util.run_cmd(copy, directory=util.reltopdir('.')) != 0:
-        print("Failed build_binaries.sh")
+        print("Failed build_binaries.py")
         return False
     return True
 
@@ -178,7 +183,10 @@ __bin_names = {
 }
 
 def binary_path(step, debug=False):
-    vehicle = step.split(".")[1]
+    try:
+        vehicle = step.split(".")[1]
+    except Exception:
+        return None
 
     if vehicle in __bin_names:
         binary_name = __bin_names[vehicle]

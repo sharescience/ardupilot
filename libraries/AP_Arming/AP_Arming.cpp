@@ -56,7 +56,7 @@ const AP_Param::GroupInfo AP_Arming::var_info[] = {
 
     // @Param: VOLT_MIN
     // @DisplayName: Arming voltage minimum on the first battery
-    // @Description: The minimum voltage on the first battery to arm, 0 disables the check
+    // @Description: The minimum voltage of the first battery required to arm, 0 disables the check
     // @Units: V
     // @Increment: 0.1 
     // @User: Standard
@@ -64,7 +64,7 @@ const AP_Param::GroupInfo AP_Arming::var_info[] = {
 
     // @Param: VOLT2_MIN
     // @DisplayName: Arming voltage minimum on the second battery
-    // @Description: The minimum voltage on the first battery to arm, 0 disables the check
+    // @Description: The minimum voltage of the second battery required to arm, 0 disables the check
     // @Units: V
     // @Increment: 0.1 
     // @User: Standard
@@ -339,7 +339,7 @@ bool AP_Arming::compass_checks(bool report)
 
 bool AP_Arming::gps_checks(bool report)
 {
-    const AP_GPS &gps = ahrs.get_gps();
+    const AP_GPS &gps = AP::gps();
     if ((checks_to_perform & ARMING_CHECK_ALL) || (checks_to_perform & ARMING_CHECK_GPS)) {
 
         //GPS OK?
@@ -377,7 +377,7 @@ bool AP_Arming::gps_checks(bool report)
         }
 
         // check AHRS and GPS are within 10m of each other
-        Location gps_loc = ahrs.get_gps().location();
+        Location gps_loc = gps.location();
         Location ahrs_loc;
         if (ahrs.get_position(ahrs_loc)) {
             float distance = location_3d_diff_NED(gps_loc, ahrs_loc).length();
@@ -450,6 +450,11 @@ bool AP_Arming::hardware_safety_check(bool report)
     return true;
 }
 
+bool AP_Arming::rc_calibration_checks(bool report)
+{
+    return true;
+}
+
 bool AP_Arming::manual_transmitter_checks(bool report)
 {
     if ((checks_to_perform & ARMING_CHECK_ALL) ||
@@ -462,9 +467,9 @@ bool AP_Arming::manual_transmitter_checks(bool report)
             return false;
         }
 
-        //TODO verify radio calibration
-        //Requires access to Parameters ... which are implemented a little
-        //differently for Rover, Plane, and Copter.
+        if (!rc_calibration_checks(report)) {
+            return false;
+        }
     }
 
     return true;
@@ -509,6 +514,14 @@ bool AP_Arming::pre_arm_checks(bool report)
 
 bool AP_Arming::arm_checks(uint8_t method)
 {
+    // ensure the GPS drivers are ready on any final changes
+    if ((checks_to_perform & ARMING_CHECK_ALL) ||
+        (checks_to_perform & ARMING_CHECK_GPS_CONFIG)) {
+        if (!AP::gps().prepare_for_arming()) {
+            return false;
+        }
+    }
+
     // note that this will prepare DataFlash to start logging
     // so should be the last check to be done before arming
     if ((checks_to_perform & ARMING_CHECK_ALL) ||

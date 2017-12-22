@@ -127,6 +127,7 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
     SCHED_TASK(ten_hz_logging_loop,   10,    350),
     SCHED_TASK(twentyfive_hz_logging, 25,    110),
     SCHED_TASK(dataflash_periodic,    400,    300),
+    SCHED_TASK(ins_periodic,         400,     50),
     SCHED_TASK(perf_update,           0.1,    75),
     SCHED_TASK(read_receiver_rssi,    10,     75),
     SCHED_TASK(rpm_update,            10,    200),
@@ -145,6 +146,7 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #if USE_EVENT_MANAGER == ENABLED
     SCHED_TASK(event_response_update,  1,     75),
 #endif
+    SCHED_TASK(winch_update,          10,     50),
 #ifdef USERHOOK_FASTLOOP
     SCHED_TASK(userhook_FastLoop,    100,     75),
 #endif
@@ -179,16 +181,8 @@ void Copter::setup()
     scheduler.init(&scheduler_tasks[0], ARRAY_SIZE(scheduler_tasks));
 
     // setup initial performance counters
-    perf_info_reset();
+    perf_info.reset();
     fast_loopTimer = AP_HAL::micros();
-}
-
-/*
-  try to accumulate a baro reading
- */
-void Copter::barometer_accumulate(void)
-{
-    barometer.accumulate();
 }
 
 void Copter::perf_update(void)
@@ -197,14 +191,14 @@ void Copter::perf_update(void)
         Log_Write_Performance();
     if (scheduler.debug()) {
         gcs().send_text(MAV_SEVERITY_WARNING, "PERF: %u/%u max=%lu min=%lu avg=%lu sd=%lu",
-                          (unsigned)perf_info_get_num_long_running(),
-                          (unsigned)perf_info_get_num_loops(),
-                          (unsigned long)perf_info_get_max_time(),
-                          (unsigned long)perf_info_get_min_time(),
-                          (unsigned long)perf_info_get_avg_time(),
-                          (unsigned long)perf_info_get_stddev_time());
+                          (unsigned)perf_info.get_num_long_running(),
+                          (unsigned)perf_info.get_num_loops(),
+                          (unsigned long)perf_info.get_max_time(),
+                          (unsigned long)perf_info.get_min_time(),
+                          (unsigned long)perf_info.get_avg_time(),
+                          (unsigned long)perf_info.get_stddev_time());
     }
-    perf_info_reset();
+    perf_info.reset();
     pmTest1 = 0;
 }
 
@@ -224,7 +218,7 @@ void Copter::loop()
     uint32_t timer = micros();
 
     // check loop time
-    perf_info_check_loop_time(timer - fast_loopTimer);
+    perf_info.check_loop_time(timer - fast_loopTimer);
 
     // used by PI Loops
     G_Dt                    = (float)(timer - fast_loopTimer) / 1000000.0f;
@@ -440,6 +434,11 @@ void Copter::twentyfive_hz_logging()
 void Copter::dataflash_periodic(void)
 {
     DataFlash.periodic_tasks();
+}
+
+void Copter::ins_periodic(void)
+{
+    ins.periodic();
 }
 
 // three_hz_loop - 3.3hz loop

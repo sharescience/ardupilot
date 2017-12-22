@@ -139,10 +139,12 @@ class ManifestGenerator():
 
                 if not firmware_format in firmware_data[vehicletype][file_platform][git_sha]:
                     firmware_data[vehicletype][file_platform][git_sha][firmware_format] = dict()
-                if not frame in firmware_data[vehicletype][file_platform][git_sha][firmware_format]:
-                    firmware_data[vehicletype][file_platform][git_sha][firmware_format][frame] = Firmware()
+                if not releasetype in firmware_data[vehicletype][file_platform][git_sha][firmware_format]:
+                    firmware_data[vehicletype][file_platform][git_sha][firmware_format][releasetype] = dict()
+                if not frame in firmware_data[vehicletype][file_platform][git_sha][firmware_format][releasetype]:
+                    firmware_data[vehicletype][file_platform][git_sha][firmware_format][releasetype][frame] = Firmware()
 
-                firmware = firmware_data[vehicletype][file_platform][git_sha][firmware_format][frame]
+                firmware = firmware_data[vehicletype][file_platform][git_sha][firmware_format][releasetype][frame]
 
                 # translate from supplied "release type" into both a
                 # "latest" flag andan actual release type.  Also sort
@@ -203,7 +205,11 @@ class ManifestGenerator():
         # used to listdir basedir here, but since this is also a web document root, there's a lot of other stuff accumulated...
         vehicletypes = [ 'AntennaTracker', 'Copter', 'Plane', 'Rover', 'Sub' ]
         for vehicletype in vehicletypes:
-            vdir = os.listdir(os.path.join(basedir, vehicletype))
+            try:
+                vdir = os.listdir(os.path.join(basedir, vehicletype))
+            except OSError as e:
+                if e.errno == 2:
+                    continue
             for firstlevel in vdir:
                 if firstlevel == "files.html":
                     # generated file which should be ignored

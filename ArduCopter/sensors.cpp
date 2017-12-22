@@ -24,6 +24,12 @@ void Copter::read_barometer(void)
     motors->set_air_density_ratio(barometer.get_air_density_ratio());
 }
 
+// try to accumulate a baro reading
+void Copter::barometer_accumulate(void)
+{
+    barometer.accumulate();
+}
+
 void Copter::init_rangefinder(void)
 {
 #if RANGEFINDER_ENABLED == ENABLED
@@ -198,7 +204,7 @@ void Copter::read_battery(void)
     // check for low voltage or current if the low voltage check hasn't already been triggered
     // we only check when we're not powered by USB to avoid false alarms during bench tests
     if (!ap.usb_connected && !failsafe.battery && battery.exhausted(g.fs_batt_voltage, g.fs_batt_mah)) {
-#if USE_EVENT_MANAGER == ENABLED
+#if USE_EVENT_MANAGER == DISABLED
         failsafe_battery_event();
 #else
         set_failsafe_battery(true);
@@ -529,4 +535,18 @@ void Copter::update_visual_odom()
                                        g2.visual_odom.get_confidence());
     }
 #endif
+}
+
+// winch and wheel encoder initialisation
+void Copter::winch_init()
+{
+    g2.wheel_encoder.init();
+    g2.winch.init(&g2.wheel_encoder);
+}
+
+// winch and wheel encoder update
+void Copter::winch_update()
+{
+    g2.wheel_encoder.update();
+    g2.winch.update();
 }

@@ -1,6 +1,12 @@
 #include "mode.h"
 #include "Rover.h"
 
+// constructor
+ModeAuto::ModeAuto(ModeRTL& mode_rtl) :
+    _mode_rtl(mode_rtl)
+{
+}
+
 bool ModeAuto::_enter()
 {
     // fail to enter auto if no mission commands
@@ -14,7 +20,6 @@ bool ModeAuto::_enter()
 
     // other initialisation
     auto_triggered = false;
-    g2.motors.slew_limit_throttle(true);
 
     // initialise reversed to be false
     set_reversed(false);
@@ -49,8 +54,7 @@ void ModeAuto::update()
             bool active_at_destination = _reached_destination && _stay_active_at_dest && (_distance_to_destination > rover.g.waypoint_radius);
             if (!_reached_destination || active_at_destination) {
                 // continue driving towards destination
-                calc_lateral_acceleration(active_at_destination ? rover.current_loc : _origin, _destination, _reversed);
-                calc_nav_steer(_reversed);
+                calc_steering_to_waypoint(active_at_destination ? rover.current_loc : _origin, _destination, _reversed);
                 calc_throttle(calc_reduced_speed_for_turn_or_distance(_reversed ? -_desired_speed : _desired_speed), true);
             } else {
                 // we have reached the destination so stop
@@ -65,7 +69,7 @@ void ModeAuto::update()
             if (!_reached_heading) {
                 // run steering and throttle controllers
                 const float yaw_error = wrap_PI(radians((_desired_yaw_cd - ahrs.yaw_sensor) * 0.01f));
-                const float steering_out = attitude_control.get_steering_out_angle_error(yaw_error, g2.motors.have_skid_steering(), g2.motors.limit.steer_left, g2.motors.limit.steer_right);
+                const float steering_out = attitude_control.get_steering_out_angle_error(yaw_error, g2.motors.have_skid_steering(), g2.motors.limit.steer_left, g2.motors.limit.steer_right, _desired_speed < 0);
                 g2.motors.set_steering(steering_out * 4500.0f);
                 calc_throttle(_desired_speed, true);
                 // check if we have reached target
@@ -75,6 +79,10 @@ void ModeAuto::update()
             }
             break;
         }
+
+        case Auto_RTL:
+            _mode_rtl.update();
+            break;
     }
 }
 
@@ -93,6 +101,9 @@ bool ModeAuto::reached_destination()
 {
     if (_submode == Auto_WP) {
         return _reached_destination;
+    }
+    if (_submode == Auto_RTL) {
+        return _mode_rtl.reached_destination();
     }
     // we should never reach here but just in case, return true to allow missions to continue
     return true;
@@ -116,6 +127,14 @@ bool ModeAuto::reached_heading()
     }
     // we should never reach here but just in case, return true to allow missions to continue
     return true;
+}
+
+// start RTL (within auto)
+void ModeAuto::start_RTL()
+{
+    if (_mode_rtl.enter()) {
+        _submode = Auto_RTL;
+    }
 }
 
 // execute the mission in reverse (i.e. backing up)

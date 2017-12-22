@@ -79,6 +79,7 @@
 #include <AC_Fence/AC_Fence.h>           // Arducopter Fence library
 #include <AC_Avoidance/AC_Avoid.h>           // Arducopter stop at fence library
 #include <AP_Scheduler/AP_Scheduler.h>       // main loop scheduler
+#include <AP_Scheduler/PerfInfo.h>       // loop perf monitoring
 #include <AP_RCMapper/AP_RCMapper.h>        // RC input mapping library
 #include <AP_Notify/AP_Notify.h>          // Notify library
 #include <AP_BattMonitor/AP_BattMonitor.h>     // Battery monitor library
@@ -94,6 +95,8 @@
 #include <AP_Arming/AP_Arming.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
 #include <AP_SmartRTL/AP_SmartRTL.h>
+#include <AP_WheelEncoder/AP_WheelEncoder.h>
+#include <AP_Winch/AP_Winch.h>
 
 // Configuration
 #include "defines.h"
@@ -372,11 +375,11 @@ private:
 
     // Location & Navigation
     int32_t wp_bearing;
-    // The location of home in relation to the copter in centi-degrees
+    // The location of home in relation to the vehicle in centi-degrees
     int32_t home_bearing;
-    // distance between plane and home in cm
+    // distance between vehicle and home in cm
     int32_t home_distance;
-    // distance between plane and next waypoint in cm.
+    // distance between vehicle and next waypoint in cm.
     uint32_t wp_distance;
     LandStateType land_state = LandStateType_FlyToLocation; // records state of land (flying to location, descending)
 
@@ -418,8 +421,8 @@ private:
     bool circle_pilot_yaw_override; // true if pilot is overriding yaw
 
     // SIMPLE Mode
-    // Used to track the orientation of the copter for Simple mode. This value is reset at each arming
-    // or in SuperSimple mode when the copter leaves a 20m radius from home.
+    // Used to track the orientation of the vehicle for Simple mode. This value is reset at each arming
+    // or in SuperSimple mode when the vehicle leaves a 20m radius from home.
     float simple_cos_yaw;
     float simple_sin_yaw;
     int32_t super_simple_last_bearing;
@@ -442,7 +445,7 @@ private:
     uint32_t nav_delay_time_start;
 
     // Flip
-    Vector3f flip_orig_attitude;         // original copter attitude before flip
+    Vector3f flip_orig_attitude;         // original vehicle attitude before flip
 
     // throw mode state
     struct {
@@ -478,8 +481,11 @@ private:
     // filtered pilot's throttle input used to cancel landing if throttle held high
     LowPassFilterFloat rc_throttle_control_in_filter;
 
+    // loop performance monitoring:
+    AP::PerfInfo perf_info = AP::PerfInfo::create();
+
     // 3D Location vectors
-    // Current location of the copter (altitude is relative to home)
+    // Current location of the vehicle (altitude is relative to home)
     Location_Class current_loc;
 
     // Navigation Yaw control
@@ -548,7 +554,7 @@ private:
 
     // Camera
 #if CAMERA == ENABLED
-    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, gps, ahrs);
+    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, ahrs);
 #endif
 
     // Camera/Antenna mount tracking and stabilisation stuff
@@ -613,7 +619,7 @@ private:
 
     AP_ADSB adsb = AP_ADSB::create(ahrs);
 
-    // avoidance of adsb enabled vehicles (normally manned vheicles)
+    // avoidance of adsb enabled vehicles (normally manned vehicles)
     AP_Avoidance_Copter avoidance_adsb = AP_Avoidance_Copter::create(ahrs, adsb);
 
     // use this to prevent recursion during sensor init
@@ -667,7 +673,6 @@ private:
 
     void compass_accumulate(void);
     void compass_cal_update(void);
-    void barometer_accumulate(void);
     void perf_update(void);
     void fast_loop();
     void rc_loop();
@@ -890,7 +895,7 @@ private:
     bool guided_set_destination(const Vector3f& destination, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
     bool guided_set_destination(const Location_Class& dest_loc, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
     void guided_set_velocity(const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
-    void guided_set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
+    bool guided_set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
     void guided_set_angle(const Quaternion &q, float climb_rate_cms, bool use_yaw_rate, float yaw_rate_rads);
     void guided_run();
     void guided_takeoff_run();
@@ -944,7 +949,7 @@ private:
 
     bool rtl_init(bool ignore_checks);
     void rtl_restart_without_terrain();
-    void rtl_run();
+    void rtl_run(bool disarm_on_land=true);
     void rtl_climb_start();
     void rtl_return_start();
     void rtl_climb_return_run();
@@ -953,7 +958,7 @@ private:
     void rtl_descent_start();
     void rtl_descent_run();
     void rtl_land_start();
-    void rtl_land_run();
+    void rtl_land_run(bool disarm_on_land);
     void rtl_build_path(bool terrain_following_allowed);
     void rtl_compute_return_target(bool terrain_following_allowed);
     bool smart_rtl_init(bool ignore_checks);
@@ -1030,7 +1035,7 @@ private:
     void update_notify();
     void motor_test_output();
     bool mavlink_motor_test_check(mavlink_channel_t chan, bool check_rc);
-    uint8_t mavlink_motor_test_start(mavlink_channel_t chan, uint8_t motor_seq, uint8_t throttle_type, uint16_t throttle_value, float timeout_sec);
+    MAV_RESULT mavlink_motor_test_start(mavlink_channel_t chan, uint8_t motor_seq, uint8_t throttle_type, uint16_t throttle_value, float timeout_sec, uint8_t motor_count);
     void motor_test_stop();
     void arm_motors_check();
     void auto_disarm_check();
@@ -1044,21 +1049,9 @@ private:
     void calc_wp_bearing();
     void calc_home_distance_and_bearing();
     void run_autopilot();
-    void perf_info_reset();
-    void perf_ignore_this_loop();
-    void perf_info_check_loop_time(uint32_t time_in_micros);
-    uint16_t perf_info_get_num_loops();
-    uint32_t perf_info_get_max_time();
-    uint32_t perf_info_get_min_time();
-    uint16_t perf_info_get_num_long_running();
-    uint32_t perf_info_get_num_dropped();
-    uint32_t perf_info_get_avg_time();
-    uint32_t perf_info_get_stddev_time();
     Vector3f pv_location_to_vector(const Location& loc);
     float pv_alt_above_origin(float alt_above_home_cm);
     float pv_alt_above_home(float alt_above_origin_cm);
-    float pv_get_bearing_cd(const Vector3f &origin, const Vector3f &destination);
-    float pv_get_horizontal_distance_cm(const Vector3f &origin, const Vector3f &destination);
     float pv_distance_to_home_cm(const Vector3f &destination);
     void default_dead_zones();
     void init_rc_in();
@@ -1070,6 +1063,7 @@ private:
     void radio_passthrough_to_motors();
     void init_barometer(bool full_calibration);
     void read_barometer(void);
+    void barometer_accumulate(void);
     void init_rangefinder(void);
     void read_rangefinder(void);
     bool rangefinder_alt_ok();
@@ -1082,6 +1076,8 @@ private:
     void read_receiver_rssi(void);
     void epm_update();
     void gripper_update();
+    void winch_init();
+    void winch_update();
     void terrain_update();
     void terrain_logging();
     bool terrain_use();
@@ -1157,6 +1153,7 @@ private:
 #if GRIPPER_ENABLED == ENABLED
     void do_gripper(const AP_Mission::Mission_Command& cmd);
 #endif
+    void do_winch(const AP_Mission::Mission_Command& cmd);
     bool verify_nav_wp(const AP_Mission::Mission_Command& cmd);
     bool verify_circle(const AP_Mission::Mission_Command& cmd);
     bool verify_spline_wp(const AP_Mission::Mission_Command& cmd);
@@ -1169,7 +1166,10 @@ private:
     void log_init(void);
     void init_capabilities(void);
     void dataflash_periodic(void);
+    void ins_periodic();
     void accel_cal_update(void);
+    
+    uint16_t get_pilot_speed_dn();    
 
 #if USE_EVENT_MANAGER == ENABLED
     void event_response_update(void);

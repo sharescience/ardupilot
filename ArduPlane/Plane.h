@@ -274,7 +274,7 @@ private:
 
     // Camera
 #if CAMERA == ENABLED
-    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, gps, ahrs);
+    AP_Camera camera = AP_Camera::create(&relay, MASK_LOG_CAMERA, current_loc, ahrs);
 #endif
 
 #if OPTFLOW == ENABLED
@@ -323,7 +323,7 @@ private:
     struct {
         // Used to track if the value on channel 3 (throtttle) has fallen below the failsafe threshold
         // RC receiver should be set up to output a low throttle value when signal is lost
-        uint8_t ch3_failsafe:1;
+        uint8_t rc_failsafe:1;
 
         // has the saved mode for failsafe been set?
         uint8_t saved_mode_set:1;
@@ -341,14 +341,14 @@ private:
         // Used for failsafe based on loss of RC signal or GCS signal
         int16_t state;
 
-        // number of low ch3 values
-        uint8_t ch3_counter;
+        // number of low throttle values
+        uint8_t throttle_counter;
 
         // the time when the last HEARTBEAT message arrived from a GCS
         uint32_t last_heartbeat_ms;
         
         // A timer used to track how long we have been in a "short failsafe" condition due to loss of RC signal
-        uint32_t ch3_timer_ms;
+        uint32_t short_timer_ms;
         
         uint32_t last_valid_rc_ms;
 
@@ -452,11 +452,11 @@ private:
         // should we fly inverted?
         bool inverted_flight:1;
 
-        // should we disable cross-tracking for the next waypoint?
-        bool next_wp_no_crosstrack:1;
+        // should we enable cross-tracking for the next waypoint?
+        bool next_wp_crosstrack:1;
 
         // should we use cross-tracking for this waypoint?
-        bool no_crosstrack:1;
+        bool crosstrack:1;
 
         // in FBWA taildragger takeoff mode
         bool fbwa_tdrag_takeoff_mode:1;
@@ -857,7 +857,7 @@ private:
     void set_target_altitude_proportion(const Location &loc, float proportion);
     void constrain_target_altitude_location(const Location &loc1, const Location &loc2);
     int32_t calc_altitude_error_cm(void);
-    void check_minimum_altitude(void);
+    void check_fbwb_minimum_altitude(void);
     void reset_offset_altitude(void);
     void set_offset_altitude_location(const Location &loc);
     bool above_location_current(const Location &loc);
@@ -901,11 +901,12 @@ private:
     void failsafe_short_on_event(enum failsafe_state fstype, mode_reason_t reason);
     void failsafe_long_on_event(enum failsafe_state fstype, mode_reason_t reason);
     void failsafe_short_off_event(mode_reason_t reason);
+    void failsafe_long_off_event(mode_reason_t reason);
     void low_battery_event(void);
     void update_events(void);
     uint8_t max_fencepoints(void);
     Vector2l get_fence_point_with_index(unsigned i);
-    void set_fence_point_with_index(Vector2l &point, unsigned i);
+    void set_fence_point_with_index(const Vector2l &point, unsigned i);
     void geofence_load(void);
     bool geofence_present(void);
     void geofence_update_pwm_enabled_state();
@@ -918,6 +919,7 @@ private:
     bool geofence_stickmixing(void);
     void geofence_send_status(mavlink_channel_t chan);
     bool geofence_breached(void);
+    void geofence_disable_and_send_error_msg(const char *errorMsg);
     void disarm_if_autoland_complete();
     float tecs_hgt_afe(void);
     void set_nav_controller(void);
@@ -944,7 +946,7 @@ private:
     void init_rc_out_aux();
     void rudder_arm_disarm_check();
     void read_radio();
-    void control_failsafe(uint16_t pwm);
+    void control_failsafe();
     void trim_control_surfaces();
     void trim_radio();
     bool rc_failsafe_active(void);
@@ -1072,6 +1074,7 @@ private:
     void notify_flight_mode(enum FlightMode mode);
     void log_init();
     void init_capabilities(void);
+    void ins_periodic();
     void dataflash_periodic(void);
     void parachute_check();
 #if PARACHUTE == ENABLED
