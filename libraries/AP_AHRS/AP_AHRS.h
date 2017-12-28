@@ -53,7 +53,7 @@ public:
     friend class AP_AHRS_View;
     
     // Constructor
-    AP_AHRS(AP_InertialSensor &ins, AP_Baro &baro, AP_GPS &gps) :
+    AP_AHRS(AP_InertialSensor &ins, AP_Baro &baro) :
         roll(0.0f),
         pitch(0.0f),
         yaw(0.0f),
@@ -68,7 +68,6 @@ public:
         _compass_last_update(0),
         _ins(ins),
         _baro(baro),
-        _gps(gps),
         _cos_roll(1.0f),
         _cos_pitch(1.0f),
         _cos_yaw(1.0f),
@@ -201,10 +200,6 @@ public:
         return _beacon;
     }
 
-    const AP_GPS &get_gps() const {
-        return _gps;
-    }
-
     const AP_InertialSensor &get_ins() const {
         return _ins;
     }
@@ -302,7 +297,7 @@ public:
     virtual bool get_position(struct Location &loc) const = 0;
 
     // return a wind estimation vector, in m/s
-    virtual Vector3f wind_estimate(void) = 0;
+    virtual Vector3f wind_estimate(void) const = 0;
 
     // return an airspeed estimate if available. return true
     // if we have an estimate
@@ -448,17 +443,17 @@ public:
     static const struct AP_Param::GroupInfo var_info[];
 
     // return secondary attitude solution if available, as eulers in radians
-    virtual bool get_secondary_attitude(Vector3f &eulers) {
+    virtual bool get_secondary_attitude(Vector3f &eulers) const {
         return false;
     }
 
     // return secondary attitude solution if available, as quaternion
-    virtual bool get_secondary_quaternion(Quaternion &quat) {
+    virtual bool get_secondary_quaternion(Quaternion &quat) const {
         return false;
     }
     
     // return secondary position solution if available
-    virtual bool get_secondary_position(struct Location &loc) {
+    virtual bool get_secondary_position(struct Location &loc) const {
         return false;
     }
 
@@ -563,6 +558,11 @@ public:
 
     virtual void update_AOA_SSA(void);
 
+    // get_hgt_ctrl_limit - get maximum height to be observed by the
+    // control loops in meters and a validity flag.  It will return
+    // false when no limiting is required
+    virtual bool get_hgt_ctrl_limit(float &limit) const { return false; };
+
 protected:
     AHRS_VehicleClass _vehicle_class;
 
@@ -623,7 +623,6 @@ protected:
     //       IMU under us without our noticing.
     AP_InertialSensor   &_ins;
     AP_Baro             &_baro;
-    const AP_GPS        &_gps;
 
     // a vector to capture the difference between the controller and body frames
     AP_Vector3f         _trim;

@@ -18,7 +18,7 @@ void Mode::exit()
     // call sub-classes exit
     _exit();
 
-    lateral_acceleration = 0.0f;
+    _desired_lat_accel = 0.0f;
 }
 
 // these are basically the same checks as in AP_Arming:
@@ -130,7 +130,6 @@ void Mode::set_desired_location(const struct Location& destination, float next_l
     // record targets
     _origin = rover.current_loc;
     _destination = destination;
-    _desired_speed = g.speed_cruise;
 
     // initialise distance
     _distance_to_destination = get_distance(_origin, _destination);
@@ -175,6 +174,24 @@ void Mode::set_desired_heading_and_speed(float yaw_angle_cd, float target_speed)
     // record targets
     _desired_yaw_cd = yaw_angle_cd;
     _desired_speed = target_speed;
+}
+
+// get default speed for this mode (held in (CRUISE_SPEED, WP_SPEED or RTL_SPEED)
+float Mode::get_speed_default(bool rtl) const
+{
+    if (rtl && is_positive(g2.rtl_speed)) {
+        return g2.rtl_speed;
+    } else if (is_positive(g2.wp_speed)) {
+        return g2.wp_speed;
+    } else {
+        return g.speed_cruise;
+    }
+}
+
+// restore desired speed to default from parameter values (CRUISE_SPEED or WP_SPEED)
+void Mode::set_desired_speed_to_default(bool rtl)
+{
+    _desired_speed = get_speed_default(rtl);
 }
 
 void Mode::calc_throttle(float target_speed, bool nudge_allowed)
@@ -268,7 +285,7 @@ float Mode::calc_reduced_speed_for_turn_or_distance(float desired_speed)
 {
     // this method makes use the following internal variables
     const float yaw_error_cd = _yaw_error_cd;
-    const float target_lateral_accel_G = lateral_acceleration;
+    const float target_lateral_accel_G = _desired_lat_accel;
     const float distance_to_waypoint = _distance_to_destination;
 
     // calculate the yaw_error_ratio which is the error (capped at 90degrees) expressed as a ratio (from 0 ~ 1)
@@ -311,7 +328,7 @@ void Mode::calc_steering_to_waypoint(const struct Location &origin, const struct
     // positive error = right turn
     rover.nav_controller->set_reverse(reversed);
     rover.nav_controller->update_waypoint(origin, destination);
-    lateral_acceleration = rover.nav_controller->lateral_acceleration();
+    _desired_lat_accel = rover.nav_controller->lateral_acceleration();
     if (reversed) {
         _yaw_error_cd = wrap_180_cd(rover.nav_controller->target_bearing_cd() - ahrs.yaw_sensor + 18000);
     } else {
@@ -319,9 +336,9 @@ void Mode::calc_steering_to_waypoint(const struct Location &origin, const struct
     }
     if (rover.use_pivot_steering(_yaw_error_cd)) {
         if (_yaw_error_cd >= 0.0f) {
-            lateral_acceleration = g.turn_max_g * GRAVITY_MSS;
+            _desired_lat_accel = g.turn_max_g * GRAVITY_MSS;
         } else {
-            lateral_acceleration = -g.turn_max_g * GRAVITY_MSS;
+            _desired_lat_accel = -g.turn_max_g * GRAVITY_MSS;
         }
     }
 
@@ -336,13 +353,13 @@ void Mode::calc_steering_from_lateral_acceleration(bool reversed)
 {
     // add obstacle avoidance response to lateral acceleration target
     if (!reversed) {
-        lateral_acceleration += (rover.obstacle.turn_angle / 45.0f) * g.turn_max_g;
+        _desired_lat_accel += (rover.obstacle.turn_angle / 45.0f) * g.turn_max_g;
     }
 
     // constrain to max G force
-    lateral_acceleration = constrain_float(lateral_acceleration, -g.turn_max_g * GRAVITY_MSS, g.turn_max_g * GRAVITY_MSS);
+    _desired_lat_accel = constrain_float(_desired_lat_accel, -g.turn_max_g * GRAVITY_MSS, g.turn_max_g * GRAVITY_MSS);
 
     // send final steering command to motor library
-    float steering_out = attitude_control.get_steering_out_lat_accel(lateral_acceleration, g2.motors.have_skid_steering(), g2.motors.limit.steer_left, g2.motors.limit.steer_right, reversed);
+    float steering_out = attitude_control.get_steering_out_lat_accel(_desired_lat_accel, g2.motors.have_skid_steering(), g2.motors.limit.steer_left, g2.motors.limit.steer_right, reversed);
     g2.motors.set_steering(steering_out * 4500.0f);
 }

@@ -126,9 +126,10 @@ def build_examples():
 def build_parameters():
     """Run the param_parse.py script."""
     print("Running param_parse.py")
-    if util.run_cmd(util.reltopdir('Tools/autotest/param_metadata/param_parse.py'), directory=util.reltopdir('.')) != 0:
-        print("Failed param_parse.py")
-        return False
+    for vehicle in 'ArduPlane', 'ArduCopter', 'ArduSub', 'APMrover2', 'AntennaTracker':
+        if util.run_cmd([util.reltopdir('Tools/autotest/param_metadata/param_parse.py'), '--vehicle', vehicle], directory=util.reltopdir('.')) != 0:
+            print("Failed param_parse.py (%s)" % vehicle)
+            return False
     return True
 
 
@@ -419,8 +420,11 @@ def check_logs(step):
         newname = buildlogs_path("%s.core" % vehicle)
         print("Renaming %s to %s" % (corefile, newname))
         shutil.move(corefile, newname)
-        util.run_cmd('/bin/cp A*/A*.elf %s' % buildlogs_dirpath(),
-                     directory=util.reltopdir('.'))
+        try:
+            util.run_cmd('/bin/cp build/sitl/bin/* %s' % buildlogs_dirpath(),
+                         directory=util.reltopdir('.'))
+        except Exception:
+            print("Unable to save binary")
 
 def run_tests(steps):
     """Run a list of steps."""

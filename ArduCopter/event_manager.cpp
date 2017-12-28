@@ -117,7 +117,7 @@ void Copter::event_on_response()
 
     // if flight mode is already LAND ensure it's not the GPS controlled LAND
     if (control_mode == LAND && !position_ok()) {
-        land_do_not_use_GPS();
+    	mode_land.do_not_use_GPS();
     }
 }
 

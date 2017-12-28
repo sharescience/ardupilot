@@ -82,11 +82,18 @@ public:
     virtual void set_desired_heading_and_speed(float yaw_angle_cd, float target_speed);
 
     // get speed error in m/s, returns zero for modes that do not control speed
-    float speed_error() { return _speed_error; }
+    float speed_error() const { return _speed_error; }
 
-    // Navigation control variables
-    // The instantaneous desired lateral acceleration in m/s/s
-    float lateral_acceleration;
+    // get default speed for this mode (held in CRUISE_SPEED, WP_SPEED or RTL_SPEED)
+    // rtl argument should be true if called from RTL or SmartRTL modes (handled here to avoid duplication)
+    float get_speed_default(bool rtl = false) const;
+
+    // set desired speed
+    void set_desired_speed(float speed) { _desired_speed = speed; }
+
+    // restore desired speed to default from parameter values (CRUISE_SPEED or WP_SPEED)
+    // rtl argument should be true if called from RTL or SmartRTL modes (handled here to avoid duplication)
+    void set_desired_speed_to_default(bool rtl = false);
 
 protected:
 
@@ -142,6 +149,7 @@ protected:
     Location _destination;      // destination Location when in Guided_WP
     float _distance_to_destination; // distance from vehicle to final destination in meters
     bool _reached_destination;  // true once the vehicle has reached the destination
+    float _desired_lat_accel;   // desired lateral acceleration in m/s/s
     float _desired_yaw_cd;      // desired yaw in centi-degrees
     float _yaw_error_cd;        // error between desired yaw and actual yaw in centi-degrees
     float _desired_speed;       // desired speed in m/s
@@ -186,11 +194,10 @@ public:
     bool is_autopilot_mode() const override { return true; }
 
     // return distance (in meters) to destination
-    float get_distance_to_destination() const override { return _distance_to_destination; }
+    float get_distance_to_destination() const override;
 
     // set desired location, heading and speed
-    // set stay_active_at_dest if the vehicle should attempt to maintain it's position at the destination (mostly for boats)
-    void set_desired_location(const struct Location& destination, float next_leg_bearing_cd = MODE_NEXT_HEADING_UNKNOWN, bool stay_active_at_dest = false);
+    void set_desired_location(const struct Location& destination, float next_leg_bearing_cd = MODE_NEXT_HEADING_UNKNOWN);
     bool reached_destination() override;
 
     // heading and speed control
@@ -225,7 +232,6 @@ private:
     bool auto_triggered;
 
     bool _reached_heading;      // true when vehicle has reached desired heading in TurnToHeading sub mode
-    bool _stay_active_at_dest;  // true when we should actively maintain position even after reaching the destination
     bool _reversed;             // execute the mission by backing up
 };
 
@@ -285,6 +291,9 @@ public:
 
     // attributes for mavlink system status reporting
     bool attitude_stabilized() const override { return false; }
+
+    // hold mode does not require GPS
+    bool requires_gps() const override { return false; }
 };
 
 
@@ -305,8 +314,8 @@ public:
     bool has_manual_input() const override { return true; }
     bool attitude_stabilized() const override { return false; }
 
+    // manual mode does not require GPS
     bool requires_gps() const override { return false; }
-
 };
 
 

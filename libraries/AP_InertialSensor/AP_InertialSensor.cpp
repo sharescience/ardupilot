@@ -425,16 +425,12 @@ const AP_Param::GroupInfo AP_InertialSensor::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("FAST_SAMPLE",  36, AP_InertialSensor, _fast_sampling_mask,   0),
 
-    // @Param: NOTCH_
-    // @DisplayName: Notch filter
-    // @Description: Gyro notch filter
-    // @User: Advanced
+    // @Group: NOTCH_
+    // @Path: ../Filter/NotchFilter.cpp
     AP_SUBGROUPINFO(_notch_filter, "NOTCH_",  37, AP_InertialSensor, NotchFilterVector3fParam),
 
-    // @Param: LOG_
-    // @DisplayName: Log Settings
-    // @Description: Log Settings
-    // @User: Advanced
+    // @Group: LOG_
+    // @Path: ../AP_InertialSensor/BatchSampler.cpp
     AP_SUBGROUPINFO(batchsampler, "LOG_",  39, AP_InertialSensor, AP_InertialSensor::BatchSampler),
 
     /*
@@ -631,6 +627,11 @@ AP_InertialSensor::init(uint16_t sample_rate)
     // remember the sample rate
     _sample_rate = sample_rate;
     _loop_delta_t = 1.0f / sample_rate;
+
+    // we don't allow deltat values greater than 10x the normal loop
+    // time to be exposed outside of INS. Large deltat values can
+    // cause divergence of state estimators
+    _loop_delta_t_max = 10 * _loop_delta_t;
 
     if (_gyro_count == 0 && _accel_count == 0) {
         _start_backends();
@@ -1465,10 +1466,14 @@ bool AP_InertialSensor::get_delta_velocity(uint8_t i, Vector3f &delta_velocity) 
  */
 float AP_InertialSensor::get_delta_velocity_dt(uint8_t i) const
 {
+    float ret;
     if (_delta_velocity_valid[i]) {
-        return _delta_velocity_dt[i];
+        ret = _delta_velocity_dt[i];
+    } else {
+        ret = get_delta_time();
     }
-    return get_delta_time();
+    ret = MIN(ret, _loop_delta_t_max);
+    return ret;
 }
 
 /*
@@ -1476,10 +1481,14 @@ float AP_InertialSensor::get_delta_velocity_dt(uint8_t i) const
  */
 float AP_InertialSensor::get_delta_angle_dt(uint8_t i) const
 {
+    float ret;
     if (_delta_angle_valid[i] && _delta_angle_dt[i] > 0) {
-        return _delta_angle_dt[i];
+        ret = _delta_angle_dt[i];
+    } else {
+        ret = get_delta_time();
     }
-    return get_delta_time();
+    ret = MIN(ret, _loop_delta_t_max);
+    return ret;
 }
 
 
