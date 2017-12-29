@@ -434,7 +434,7 @@ const AP_Param::GroupInfo Compass::var_info[] = {
     // @Description: This is a bitmask of driver types to disable. If a driver type is set in this mask then that driver will not try to find a sensor at startup
     // @Bitmask: 0:HMC5883,1:LSM303D,2:AK8963,3:BMM150,4:LSM9DS1,5:LIS3MDL,6:AK09916,7:IST8310,8:ICM20948,9:MMC3416,10:QFLIGHT,11:UAVCAN,12:QMC5883
     // @User: Advanced
-    AP_GROUPINFO("TYPEMASK", 33, Compass, _driver_type_mask, 0),
+    AP_GROUPINFO("TYPEMASK", 33, Compass, _driver_type_mask, 8191),
 
     AP_GROUPEND
 };
@@ -518,7 +518,7 @@ bool Compass::_add_backend(AP_Compass_Backend *backend, const char *name, bool e
 bool Compass::_driver_enabled(enum DriverType driver_type)
 {
     uint32_t mask = (1U<<uint8_t(driver_type));
-    return (mask & uint32_t(_driver_type_mask.get())) == 0;
+    return (mask & uint32_t(_driver_type_mask.get())) != 0;
 }
 
 /*
