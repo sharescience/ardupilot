@@ -320,11 +320,21 @@ private:
 private:
     static DataFlash_Class *_instance;
 
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+    bool validate_structure(const struct LogStructure *logstructure, int16_t offset);
     void validate_structures(const struct LogStructure *logstructures, const uint8_t num_types);
     void dump_structure_field(const struct LogStructure *logstructure, const char *label, const uint8_t fieldnum);
     void dump_structures(const struct LogStructure *logstructures, const uint8_t num_types);
+    void assert_same_fmt_for_name(const log_write_fmt *f,
+                                  const char *name,
+                                  const char *labels,
+                                  const char *units,
+                                  const char *mults,
+                                  const char *fmt) const;
     const char* unit_name(const uint8_t unit_id);
     double multiplier_name(const uint8_t multiplier_id);
+    bool seen_ids[256] = { };
+#endif
 
     void Log_Write_EKF_Timing(const char *name, uint64_t time_us, const struct ekf_timing &timing);
 

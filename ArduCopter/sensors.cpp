@@ -351,7 +351,7 @@ void Copter::update_sensor_status_flags(void)
         control_sensors_present |= MAV_SYS_STATUS_SENSOR_BATTERY;
     }
 #if AC_FENCE == ENABLED
-    if (copter.fence.geofence_present()) {
+    if (copter.fence.sys_status_present()) {
         control_sensors_present |= MAV_SYS_STATUS_GEOFENCE;
     }
 #endif
@@ -403,7 +403,7 @@ void Copter::update_sensor_status_flags(void)
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_BATTERY;
     }
 #if AC_FENCE == ENABLED
-    if (copter.fence.geofence_enabled()) {
+    if (copter.fence.sys_status_enabled()) {
         control_sensors_enabled |= MAV_SYS_STATUS_GEOFENCE;
     }
 #endif
@@ -497,7 +497,7 @@ void Copter::update_sensor_status_flags(void)
     if (copter.failsafe.battery) {
          control_sensors_health &= ~MAV_SYS_STATUS_SENSOR_BATTERY;                                                                    }
 #if AC_FENCE == ENABLED
-    if (copter.fence.geofence_failed()) {
+    if (copter.fence.sys_status_failed()) {
         control_sensors_health &= ~MAV_SYS_STATUS_GEOFENCE;
     }
 #endif
