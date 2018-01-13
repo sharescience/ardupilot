@@ -15,6 +15,9 @@ bool ModeAuto::_enter()
         return false;
     }
 
+    // initialise waypoint speed
+    set_desired_speed_to_default();
+
     // init location target
     set_desired_location(rover.current_loc);
 
@@ -50,16 +53,13 @@ void ModeAuto::update()
                     _reached_destination = true;
                 }
             }
-            // stay active at destination if caller requested this behaviour and outside the waypoint radius
-            bool active_at_destination = _reached_destination && _stay_active_at_dest && (_distance_to_destination > rover.g.waypoint_radius);
-            if (!_reached_destination || active_at_destination) {
+            if (!_reached_destination || rover.is_boat()) {
                 // continue driving towards destination
-                calc_steering_to_waypoint(active_at_destination ? rover.current_loc : _origin, _destination, _reversed);
+                calc_steering_to_waypoint(_reached_destination ? rover.current_loc : _origin, _destination, _reversed);
                 calc_throttle(calc_reduced_speed_for_turn_or_distance(_reversed ? -_desired_speed : _desired_speed), true);
             } else {
                 // we have reached the destination so stop
                 stop_vehicle();
-                lateral_acceleration = 0.0f;
             }
             break;
         }
@@ -68,12 +68,10 @@ void ModeAuto::update()
         {
             if (!_reached_heading) {
                 // run steering and throttle controllers
-                const float yaw_error = wrap_PI(radians((_desired_yaw_cd - ahrs.yaw_sensor) * 0.01f));
-                const float steering_out = attitude_control.get_steering_out_angle_error(yaw_error, g2.motors.have_skid_steering(), g2.motors.limit.steer_left, g2.motors.limit.steer_right, _desired_speed < 0);
-                g2.motors.set_steering(steering_out * 4500.0f);
+                calc_steering_to_heading(_desired_yaw_cd, _desired_speed < 0);
                 calc_throttle(_desired_speed, true);
-                // check if we have reached target
-                _reached_heading = (fabsf(yaw_error) < radians(5));
+                // check if we have reached within 5 degrees of target
+                _reached_heading = (fabsf(_desired_yaw_cd - ahrs.yaw_sensor) < 500);
             } else {
                 stop_vehicle();
             }
@@ -86,14 +84,22 @@ void ModeAuto::update()
     }
 }
 
+// return distance (in meters) to destination
+float ModeAuto::get_distance_to_destination() const
+{
+    if (_submode == Auto_RTL) {
+        return _mode_rtl.get_distance_to_destination();
+    }
+    return _distance_to_destination;
+}
+
 // set desired location to drive to
-void ModeAuto::set_desired_location(const struct Location& destination, float next_leg_bearing_cd, bool stay_active_at_dest)
+void ModeAuto::set_desired_location(const struct Location& destination, float next_leg_bearing_cd)
 {
     // call parent
     Mode::set_desired_location(destination, next_leg_bearing_cd);
 
     _submode = Auto_WP;
-    _stay_active_at_dest = stay_active_at_dest;
 }
 
 // return true if vehicle has reached or even passed destination

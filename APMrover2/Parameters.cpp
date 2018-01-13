@@ -28,7 +28,7 @@ const AP_Param::Info Rover::var_info[] = {
     // @DisplayName: Log bitmask
     // @Description: Bitmap of what log types to enable in dataflash. This values is made up of the sum of each of the log types you want to be saved on dataflash. On a PX4 or Pixhawk the large storage size of a microSD card means it is usually best just to enable all log types by setting this to 65535. On APM2 the smaller 4 MByte dataflash means you need to be more selective in your logging or you may run out of log space while flying (in which case it will wrap and overwrite the start of the log). The individual bits are ATTITUDE_FAST=1, ATTITUDE_MEDIUM=2, GPS=4, PerformanceMonitoring=8, ControlTuning=16, NavigationTuning=32, Mode=64, IMU=128, Commands=256, Battery=512, Compass=1024, TECS=2048, Camera=4096, RCandServo=8192, Rangefinder=16384, Arming=32768, FullLogs=65535
     // @Values: 0:Disabled,5190:APM2-Default,65535:PX4/Pixhawk-Default
-    // @Bitmask: 0:ATTITUDE_FAST,1:ATTITUDE_MED,2:GPS,3:PM,4:CTUN,5:NTUN,6:MODE,7:IMU,8:CMD,9:CURRENT,10:COMPASS,11:TECS,12:CAMERA,13:RC,14:RANGEFINDER,15:ARM/DISARM,19:IMU_RAW
+    // @Bitmask: 0:ATTITUDE_FAST,1:ATTITUDE_MED,2:GPS,3:PM,4:THR,5:NTUN,7:IMU,8:CMD,9:CURRENT,10:RANGEFINDER,11:COMPASS,12:CAMERA,13:STEERING,14:RC,15:ARM/DISARM,19:IMU_RAW
     // @User: Advanced
     GSCALAR(log_bitmask,            "LOG_BITMASK",      DEFAULT_LOG_BITMASK),
 
@@ -152,7 +152,7 @@ const AP_Param::Info Rover::var_info[] = {
     // @Param: FS_ACTION
     // @DisplayName: Failsafe Action
     // @Description: What to do on a failsafe event
-    // @Values: 0:Nothing,1:RTL,2:HOLD
+    // @Values: 0:Nothing,1:RTL,2:Hold
     // @User: Standard
     GSCALAR(fs_action,    "FS_ACTION",     2),
 
@@ -188,7 +188,7 @@ const AP_Param::Info Rover::var_info[] = {
     // @Param: FS_CRASH_CHECK
     // @DisplayName: Crash check action
     // @Description: What to do on a crash event. When enabled the rover will go to hold if a crash is detected.
-    // @Values: 0:Disabled,1:HOLD,2:HoldAndDisarm
+    // @Values: 0:Disabled,1:Hold,2:HoldAndDisarm
     // @User: Standard
     GSCALAR(fs_crash_check, "FS_CRASH_CHECK",    FS_CRASH_DISABLE),
 
@@ -516,6 +516,31 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Group: SRTL_
     // @Path: ../libraries/AP_SmartRTL/AP_SmartRTL.cpp
     AP_SUBGROUPINFO(smart_rtl, "SRTL_", 13, ParametersG2, AP_SmartRTL),
+
+    // @Param: WP_SPEED
+    // @DisplayName: Waypoint speed default
+    // @Description: Waypoint speed default.  If zero use CRUISE_SPEED.
+    // @Units: m/s
+    // @Range: 0 100
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("WP_SPEED", 14, ParametersG2, wp_speed, 0.0f),
+
+    // @Param: RTL_SPEED
+    // @DisplayName: Return-to-Launch speed default
+    // @Description: Return-to-Launch speed default.  If zero use WP_SPEED or CRUISE_SPEED.
+    // @Units: m/s
+    // @Range: 0 100
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("RTL_SPEED", 15, ParametersG2, rtl_speed, 0.0f),
+
+    // @Param: FRAME_CLASS
+    // @DisplayName: Frame Class
+    // @Description: Frame Class
+    // @Values: 0:Undefined,1:Rover,2:Boat
+    // @User: Standard
+    AP_GROUPINFO("FRAME_CLASS", 16, ParametersG2, frame_class, 1),
 
     AP_GROUPEND
 };

@@ -166,8 +166,8 @@ void NOINLINE Copter::send_nav_controller_output(mavlink_channel_t chan)
         targets.x * 1.0e-2f,
         targets.y * 1.0e-2f,
         targets.z * 1.0e-2f,
-        wp_bearing * 1.0e-2f,
-        MIN(wp_distance * 1.0e-2f, UINT16_MAX),
+        flightmode->wp_bearing() * 1.0e-2f,
+        MIN(flightmode->wp_distance() * 1.0e-2f, UINT16_MAX),
         pos_control->get_alt_error() * 1.0e-2f,
         0,
         0);
@@ -738,7 +738,7 @@ GCS_MAVLINK_Copter::data_stream_send(void)
 
 bool GCS_MAVLINK_Copter::handle_guided_request(AP_Mission::Mission_Command &cmd)
 {
-    return copter.do_guided(cmd);
+    return copter.mode_auto.do_guided(cmd);
 }
 
 void GCS_MAVLINK_Copter::handle_change_alt_request(AP_Mission::Mission_Command &cmd)
@@ -1080,6 +1080,9 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
 
         case MAV_CMD_DO_MOUNT_CONTROL:
 #if MOUNT == ENABLED
+            if(!copter.camera_mount.has_pan_control()) {
+                copter.set_auto_yaw_look_at_heading((float)packet.param3 / 100.0f,0.0f,0,0);
+            }
             copter.camera_mount.control(packet.param1, packet.param2, packet.param3, (MAV_MOUNT_MODE) packet.param7);
             result = MAV_RESULT_ACCEPTED;
 #endif
@@ -1355,7 +1358,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
 
                     if (!shot_mode) {
                         if (copter.set_mode(BRAKE, MODE_REASON_GCS_COMMAND)) {
-                            copter.brake_timeout_to_loiter_ms(2500);
+                            copter.mode_brake.timeout_to_loiter_ms(2500);
                         } else {
                             copter.set_mode(ALT_HOLD, MODE_REASON_GCS_COMMAND);
                         }
@@ -1399,7 +1402,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         mavlink_msg_set_attitude_target_decode(msg, &packet);
 
         // exit if vehicle is not in Guided mode or Auto-Guided mode
-        if ((copter.control_mode != GUIDED) && (copter.control_mode != GUIDED_NOGPS) && !(copter.control_mode == AUTO && copter.auto_mode == Auto_NavGuided)) {
+        if ((copter.control_mode != GUIDED) && (copter.control_mode != GUIDED_NOGPS) && !(copter.control_mode == AUTO && copter.mode_auto.mode() == Auto_NavGuided)) {
             break;
         }
 
@@ -1428,7 +1431,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
             use_yaw_rate = true;
         }
 
-        copter.guided_set_angle(Quaternion(packet.q[0],packet.q[1],packet.q[2],packet.q[3]),
+        copter.mode_guided.set_angle(Quaternion(packet.q[0],packet.q[1],packet.q[2],packet.q[3]),
             climb_rate_cms, use_yaw_rate, packet.body_yaw_rate);
 
         break;
@@ -1441,7 +1444,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         mavlink_msg_set_position_target_local_ned_decode(msg, &packet);
 
         // exit if vehicle is not in Guided mode or Auto-Guided mode
-        if ((copter.control_mode != GUIDED) && !(copter.control_mode == AUTO && copter.auto_mode == Auto_NavGuided)) {
+        if ((copter.control_mode != GUIDED) && !(copter.control_mode == AUTO && copter.mode_auto.mode() == Auto_NavGuided)) {
             break;
         }
 
@@ -1510,16 +1513,16 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
 
         // send request
         if (!pos_ignore && !vel_ignore && acc_ignore) {
-            if (copter.guided_set_destination_posvel(pos_vector, vel_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+            if (copter.mode_guided.set_destination_posvel(pos_vector, vel_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
                 result = MAV_RESULT_ACCEPTED;
             } else {
                 result = MAV_RESULT_FAILED;
             }
         } else if (pos_ignore && !vel_ignore && acc_ignore) {
-            copter.guided_set_velocity(vel_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
+            copter.mode_guided.set_velocity(vel_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
             result = MAV_RESULT_ACCEPTED;
         } else if (!pos_ignore && vel_ignore && acc_ignore) {
-            if (copter.guided_set_destination(pos_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+            if (copter.mode_guided.set_destination(pos_vector, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
                 result = MAV_RESULT_ACCEPTED;
             } else {
                 result = MAV_RESULT_FAILED;
@@ -1538,7 +1541,7 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         mavlink_msg_set_position_target_global_int_decode(msg, &packet);
 
         // exit if vehicle is not in Guided mode or Auto-Guided mode
-        if ((copter.control_mode != GUIDED) && !(copter.control_mode == AUTO && copter.auto_mode == Auto_NavGuided)) {
+        if ((copter.control_mode != GUIDED) && !(copter.control_mode == AUTO && copter.mode_auto.mode() == Auto_NavGuided)) {
             break;
         }
 
@@ -1612,16 +1615,16 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         }
 
         if (!pos_ignore && !vel_ignore && acc_ignore) {
-            if (copter.guided_set_destination_posvel(pos_neu_cm, Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f), !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+            if (copter.mode_guided.set_destination_posvel(pos_neu_cm, Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f), !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
                 result = MAV_RESULT_ACCEPTED;
             } else {
                 result = MAV_RESULT_FAILED;
             }
         } else if (pos_ignore && !vel_ignore && acc_ignore) {
-            copter.guided_set_velocity(Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f), !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
+            copter.mode_guided.set_velocity(Vector3f(packet.vx * 100.0f, packet.vy * 100.0f, -packet.vz * 100.0f), !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative);
             result = MAV_RESULT_ACCEPTED;
         } else if (!pos_ignore && vel_ignore && acc_ignore) {
-            if (copter.guided_set_destination(pos_neu_cm, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
+            if (copter.mode_guided.set_destination(pos_neu_cm, !yaw_ignore, yaw_cd, !yaw_rate_ignore, yaw_rate_cds, yaw_relative)) {
                 result = MAV_RESULT_ACCEPTED;
             } else {
                 result = MAV_RESULT_FAILED;
@@ -1719,6 +1722,9 @@ void GCS_MAVLINK_Copter::handleMessage(mavlink_message_t* msg)
         break;
     //deprecated. Use MAV_CMD_DO_MOUNT_CONTROL
     case MAVLINK_MSG_ID_MOUNT_CONTROL:
+        if(!copter.camera_mount.has_pan_control()) {
+            copter.set_auto_yaw_look_at_heading(mavlink_msg_mount_control_get_input_c(msg)/100.0f, 0.0f, 0, 0);
+        }
         copter.camera_mount.control_msg(msg);
         break;
 #endif // MOUNT == ENABLED

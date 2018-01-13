@@ -49,7 +49,6 @@ bool AP_Arming_Copter::pre_arm_checks(bool display_failure)
         if (display_failure) {
             gcs().send_text(MAV_SEVERITY_CRITICAL,"PreArm: Motor Interlock Enabled");
         }
-        return false;
     }
 
     // succeed if pre arm checks are disabled
@@ -378,7 +377,7 @@ bool AP_Arming_Copter::gps_checks(bool display_failure)
     }
 
     // check if flight mode requires GPS
-    bool mode_requires_gps = copter.mode_requires_GPS(copter.control_mode);
+    bool mode_requires_gps = copter.flightmode->requires_GPS();
 
     // check if fence requires GPS
     bool fence_requires_gps = false;
@@ -586,7 +585,7 @@ bool AP_Arming_Copter::arm_checks(bool display_failure, bool arming_from_gcs)
     control_mode_t control_mode = copter.control_mode;
 
     // always check if the current mode allows arming
-    if (!copter.mode_allows_arming(control_mode, arming_from_gcs)) {
+    if (!copter.flightmode->allows_arming(arming_from_gcs)) {
         if (display_failure) {
             gcs().send_text(MAV_SEVERITY_CRITICAL,"Arm: Mode not armable");
         }
@@ -668,7 +667,7 @@ bool AP_Arming_Copter::arm_checks(bool display_failure, bool arming_from_gcs)
                 return false;
             }
             // in manual modes throttle must be at zero
-            if ((copter.mode_has_manual_throttle(control_mode) || control_mode == DRIFT) && copter.channel_throttle->get_control_in() > 0) {
+            if ((copter.flightmode->has_manual_throttle() || control_mode == DRIFT) && copter.channel_throttle->get_control_in() > 0) {
                 if (display_failure) {
                     #if FRAME_CONFIG == HELI_FRAME
                     gcs().send_text(MAV_SEVERITY_CRITICAL,"Arm: Collective too high");

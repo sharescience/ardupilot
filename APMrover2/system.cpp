@@ -140,7 +140,7 @@ void Rover::init_ardupilot()
 
     startup_ground();
 
-    Mode *initial_mode = control_mode_from_num((enum mode)g.initial_mode.get());
+    Mode *initial_mode = mode_from_mode_num((enum mode)g.initial_mode.get());
     if (initial_mode == nullptr) {
         initial_mode = &mode_initializing;
     }
@@ -178,10 +178,6 @@ void Rover::startup_ground(void)
     //
 
     startup_INS_ground();
-
-    // read the radio to set trims
-    // ---------------------------
-    trim_radio();
 
     // initialise mission library
     mission.init();
@@ -366,4 +362,11 @@ void Rover::smart_rtl_update()
 {
     const bool save_position = hal.util->get_soft_armed() && (control_mode != &mode_smartrtl);
     mode_smartrtl.save_position(save_position);
+}
+
+// returns true if vehicle is a boat
+// this affects whether the vehicle tries to maintain position after reaching waypoints
+bool Rover::is_boat() const
+{
+    return ((enum frame_class)g2.frame_class.get() == FRAME_BOAT);
 }

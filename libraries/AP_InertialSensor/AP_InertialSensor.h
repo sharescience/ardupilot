@@ -49,9 +49,7 @@ class AP_InertialSensor : AP_AccelCal_Client
     friend class AP_InertialSensor_Backend;
 
 public:
-    static AP_InertialSensor create() { return AP_InertialSensor{}; }
-
-    constexpr AP_InertialSensor(AP_InertialSensor &&other) = default;
+    AP_InertialSensor();
 
     /* Do not allow copies */
     AP_InertialSensor(const AP_InertialSensor &other) = delete;
@@ -173,7 +171,7 @@ public:
     /* get_delta_time returns the time period in seconds
      * overwhich the sensor data was collected
      */
-    float get_delta_time() const { return _delta_time; }
+    float get_delta_time() const { return MIN(_delta_time, _loop_delta_t_max); }
 
     // return the maximum gyro drift rate in radians/s/s. This
     // depends on what gyro chips are being used
@@ -346,8 +344,6 @@ public:
     BatchSampler batchsampler{*this};
 
 private:
-    AP_InertialSensor();
-
     // load backend drivers
     bool _add_backend(AP_InertialSensor_Backend *backend);
     void _start_backends();
@@ -378,6 +374,7 @@ private:
     // the selected sample rate
     uint16_t _sample_rate;
     float _loop_delta_t;
+    float _loop_delta_t_max;
 
     // Most recent accelerometer reading
     Vector3f _accel[INS_MAX_INSTANCES];

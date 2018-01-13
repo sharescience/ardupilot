@@ -15,7 +15,6 @@ void ModeSteering::update()
         // no valid speed so stop
         g2.motors.set_throttle(0.0f);
         g2.motors.set_steering(0.0f);
-        lateral_acceleration = 0.0f;
         return;
     }
 
@@ -36,13 +35,13 @@ void ModeSteering::update()
     max_g_force = constrain_float(max_g_force, 0.1f, g.turn_max_g * GRAVITY_MSS);
 
     // convert pilot steering input to desired lateral acceleration
-    lateral_acceleration = max_g_force * (desired_steering / 4500.0f);
+    float desired_lat_accel = max_g_force * (desired_steering / 4500.0f);
 
     // reverse target lateral acceleration if backing up
     bool reversed = false;
     if (is_negative(target_speed)) {
         reversed = true;
-        lateral_acceleration = -lateral_acceleration;
+        desired_lat_accel = -desired_lat_accel;
     }
 
     // mark us as in_reverse when using a negative throttle
@@ -53,7 +52,7 @@ void ModeSteering::update()
         stop_vehicle();
     } else {
         // run lateral acceleration to steering controller
-        calc_steering_from_lateral_acceleration(false);
+        calc_steering_from_lateral_acceleration(desired_lat_accel, reversed);
         calc_throttle(target_speed, false);
     }
 }
