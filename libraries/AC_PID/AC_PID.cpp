@@ -99,8 +99,8 @@ void AC_PID::set_input_filter_all(float input)
     }
 
     // update filter and calculate derivative
-    float input_filt_change = get_filt_alpha() * (input - _input);
-    _input = _input + input_filt_change;
+    float input_filt_change = (input - _input);
+    _input = _input + get_filt_alpha() * input_filt_change;
     if (_dt > 0.0f) {
         _derivative = input_filt_change / _dt;
     }
