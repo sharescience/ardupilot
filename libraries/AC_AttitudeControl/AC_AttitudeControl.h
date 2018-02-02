@@ -221,14 +221,14 @@ public:
     float lean_angle_max() const { return _aparm.angle_max; }
 
     // Proportional controller with piecewise sqrt sections to constrain second derivative
-    static float sqrt_controller(float error, float p, float second_ord_lim);
+    static float sqrt_controller(float error, float p, float second_ord_lim, float dt);
 
     // Inverse proportional controller with piecewise sqrt sections to constrain second derivative
     static float stopping_point(float first_ord_mag, float p, float second_ord_lim);
 
     // calculates the velocity correction from an angle error. The angular velocity has acceleration and
     // deceleration limits including basic jerk limiting using smoothing_gain
-    float input_shaping_angle(float error_angle, float smoothing_gain, float accel_max, float target_ang_vel);
+    static float input_shaping_angle(float error_angle, float smoothing_gain, float accel_max, float target_ang_vel, float dt);
 
     // limits the acceleration and deceleration of a velocity request
     float input_shaping_ang_vel(float target_ang_vel, float desired_ang_vel, float accel_max);
@@ -333,7 +333,7 @@ protected:
     // Intersampling period in seconds
     float               _dt;
 
-    // This represents a 321-intrinsic rotation from NED frame to the target (setpoint)
+    // This represents a 321-intrinsic rotation in NED frame to the target (setpoint)
     // attitude used in the attitude controller, in radians.
     Vector3f            _attitude_target_euler_angle;
 
@@ -342,7 +342,7 @@ protected:
     // second.
     Vector3f            _attitude_target_euler_rate;
 
-    // This represents a quaternion rotation from NED frame to the target (setpoint)
+    // This represents a quaternion rotation in NED frame to the target (setpoint)
     // attitude used in the attitude controller.
     Quaternion          _attitude_target_quat;
 
@@ -351,7 +351,7 @@ protected:
     // the target attitude frame.
     Vector3f            _attitude_target_ang_vel;
 
-    // This represents the angular velocity in radians per second, used in the angular
+    // This represents the angular velocity in radians per second in the body frame, used in the angular
     // velocity controller.
     Vector3f            _rate_target_ang_vel;
 

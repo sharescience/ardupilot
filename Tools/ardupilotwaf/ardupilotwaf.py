@@ -64,6 +64,9 @@ COMMON_VEHICLE_DEPENDENT_LIBRARIES = [
     'AP_ServoRelayEvents',
     'AP_Volz_Protocol',
     'AP_SBusOut',
+    'AP_IOMCU',
+    'AP_RAMTRON',
+    'AP_RCProtocol',
 ]
 
 def get_legacy_defines(sketch_name):
@@ -233,6 +236,10 @@ _versions = []
 @conf
 def ap_version_append_str(ctx, k, v):
     ctx.env['AP_VERSION_ITEMS'] += [(k, '"{}"'.format(os.environ.get(k, v)))]
+
+@conf
+def ap_version_append_int(ctx, k, v):
+    ctx.env['AP_VERSION_ITEMS'] += [(k,v)]
 
 @conf
 def write_version_header(ctx, tgt):

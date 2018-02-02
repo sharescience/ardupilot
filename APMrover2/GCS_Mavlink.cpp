@@ -258,6 +258,11 @@ void Rover::send_pid_tuning(mavlink_channel_t chan)
     }
 }
 
+void Rover::send_fence_status(mavlink_channel_t chan)
+{
+    fence_send_mavlink_status(chan);
+}
+
 void Rover::send_wheel_encoder(mavlink_channel_t chan)
 {
     // send wheel encoder data using rpm message
@@ -356,6 +361,11 @@ bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
         send_raw_imu(rover.ins, rover.compass);
         break;
 
+    case MSG_RAW_IMU2:
+        CHECK_PAYLOAD_SIZE(SCALED_PRESSURE);
+        send_scaled_pressure(rover.barometer);
+        break;
+
     case MSG_RAW_IMU3:
         CHECK_PAYLOAD_SIZE(SENSOR_OFFSETS);
         send_sensor_offsets(rover.ins, rover.compass, rover.barometer);
@@ -375,6 +385,7 @@ bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
         CHECK_PAYLOAD_SIZE(RANGEFINDER);
         rover.send_rangefinder(chan);
         send_distance_sensor(rover.rangefinder);
+        send_proximity(rover.g2.proximity);
         break;
 
     case MSG_RPM:
@@ -387,6 +398,11 @@ bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
         CHECK_PAYLOAD_SIZE(MOUNT_STATUS);
         rover.camera_mount.status_msg(chan);
 #endif  // MOUNT == ENABLED
+        break;
+
+    case MSG_FENCE_STATUS:
+        CHECK_PAYLOAD_SIZE(FENCE_STATUS);
+        rover.send_fence_status(chan);
         break;
 
     case MSG_VIBRATION:
@@ -545,6 +561,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
 
     if (stream_trigger(STREAM_RAW_SENSORS)) {
         send_message(MSG_RAW_IMU1);
+        send_message(MSG_RAW_IMU2);
         send_message(MSG_RAW_IMU3);
     }
 
@@ -561,6 +578,7 @@ GCS_MAVLINK_Rover::data_stream_send(void)
         send_message(MSG_GPS2_RAW);
         send_message(MSG_GPS2_RTK);
         send_message(MSG_NAV_CONTROLLER_OUTPUT);
+        send_message(MSG_FENCE_STATUS);
     }
 
     if (gcs().out_of_time()) {
@@ -878,6 +896,21 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
                 }
             } else {
                 result = MAV_RESULT_UNSUPPORTED;
+            }
+            break;
+
+        case MAV_CMD_DO_FENCE_ENABLE:
+            result = MAV_RESULT_ACCEPTED;
+            switch ((uint16_t)packet.param1) {
+                case 0:
+                    rover.g2.fence.enable(false);
+                    break;
+                case 1:
+                    rover.g2.fence.enable(true);
+                    break;
+                default:
+                    result = MAV_RESULT_FAILED;
+                    break;
             }
             break;
 
@@ -1354,8 +1387,15 @@ void GCS_MAVLINK_Rover::handleMessage(mavlink_message_t* msg)
             break;
         }
 
+    // send or receive fence points with GCS
+    case MAVLINK_MSG_ID_FENCE_POINT:  // MAV ID: 160
+    case MAVLINK_MSG_ID_FENCE_FETCH_POINT:
+        rover.g2.fence.handle_msg(*this, msg);
+        break;
+
     case MAVLINK_MSG_ID_DISTANCE_SENSOR:
         rover.rangefinder.handle_msg(msg);
+        rover.g2.proximity.handle_msg(msg);
         break;
 
     case MAVLINK_MSG_ID_VISION_POSITION_DELTA:
