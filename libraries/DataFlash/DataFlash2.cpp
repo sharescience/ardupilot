@@ -14,3 +14,18 @@ void DataFlash2::Log_Write_FSM(uint16_t id, uint8_t state)
 						                   id,
 						                   state);
 }
+
+void DataFlash2::Log_Write_SCH(uint8_t i, const char *fun, uint16_t interval_ticks, uint32_t time_taken, uint32_t task_time_allowed)
+{
+	char function[64] = {};
+	strncpy(function, fun, sizeof(function));
+	DataFlash_Class::instance()->Log_Write(SCHEDULER_TASK_NAME,
+			                               SCHEDULER_TASK_LABELS,
+			                               SCHEDULER_TASK_FMT,
+						                   AP_HAL::micros64(),
+						                   i,
+										   function,
+										   interval_ticks,
+										   time_taken,
+										   task_time_allowed);
+}

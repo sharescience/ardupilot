@@ -23,6 +23,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Param/AP_Param.h>
 #include <AP_Vehicle/AP_Vehicle.h>
+#include <DataFlash/DataFlash2.h>
 #include <stdio.h>
 
 #if APM_BUILD_TYPE(APM_BUILD_ArduCopter) || APM_BUILD_TYPE(APM_BUILD_ArduSub)
@@ -45,11 +46,18 @@ const AP_Param::GroupInfo AP_Scheduler::var_info[] = {
 
     // @Param: LOOP_RATE
     // @DisplayName: Scheduling main loop rate
-    // @Description: This controls the rate of the main control loop in Hz. This should only be changed by developers. This only takes effect on restart
+    // @Description: This controls the rate of the main control loop in Hz. This should only be changed by developers. This only takes effect on restart. Values over 400 are considered highly experimental.
     // @Values: 50:50Hz,100:100Hz,200:200Hz,250:250Hz,300:300Hz,400:400Hz
     // @RebootRequired: True
     // @User: Advanced
     AP_GROUPINFO("LOOP_RATE",  1, AP_Scheduler, _loop_rate_hz, SCHEDULER_DEFAULT_LOOP_RATE),
+
+    // @Param: LOG_ENAB
+    // @DisplayName: Scheduling log enable
+    // @Description: Write scheduler tasks information into log file
+	// @Values: 0:Disabled,1:Running,2:Slip,3:Overrun
+    // @User: Advanced
+    AP_GROUPINFO("LOG_ENAB",  2, AP_Scheduler, _log_enable, 0),
 
     AP_GROUPEND
 };
@@ -57,14 +65,13 @@ const AP_Param::GroupInfo AP_Scheduler::var_info[] = {
 // constructor
 AP_Scheduler::AP_Scheduler(void)
 {
-    _loop_rate_hz.set(SCHEDULER_DEFAULT_LOOP_RATE);
     AP_Param::setup_object_defaults(this, var_info);
 
-    // only allow 50 to 400 Hz
+    // only allow 50 to 2000 Hz
     if (_loop_rate_hz < 50) {
         _loop_rate_hz.set(50);
-    } else if (_loop_rate_hz > 400) {
-        _loop_rate_hz.set(400);
+    } else if (_loop_rate_hz > 2000) {
+        _loop_rate_hz.set(2000);
     }
 }
 
@@ -122,6 +129,9 @@ void AP_Scheduler::run(uint32_t time_available)
                              (unsigned)interval_ticks,
                              (unsigned)_task_time_allowed);
                 }
+                if(2 == _log_enable){
+                	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name, interval_ticks);
+                }
             }
 
             if (_task_time_allowed <= time_available) {
@@ -132,6 +142,9 @@ void AP_Scheduler::run(uint32_t time_available)
                     hal.util->perf_begin(_perf_counters[i]);
                 }
                 _tasks[i].function();
+                if(1 == _log_enable){
+                	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name, 0 ,time_available);
+                }
                 if (_debug > 1 && _perf_counters && _perf_counters[i]) {
                     hal.util->perf_end(_perf_counters[i]);
                 }
@@ -153,6 +166,9 @@ void AP_Scheduler::run(uint32_t time_available)
                                  _tasks[i].name,
                                  (unsigned)time_taken,
                                  (unsigned)_task_time_allowed);
+                    }
+                    if(3 == _log_enable){
+                    	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name, 0, time_taken, _task_time_allowed);
                     }
                 }
                 if (time_taken >= time_available) {
@@ -189,7 +205,7 @@ uint16_t AP_Scheduler::time_available_usec(void)
 /*
   calculate load average as a number from 0 to 1
  */
-float AP_Scheduler::load_average() const
+float AP_Scheduler::load_average()
 {
     if (_spare_ticks == 0) {
         return 0.0f;

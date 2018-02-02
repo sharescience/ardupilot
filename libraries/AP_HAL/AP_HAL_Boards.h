@@ -12,6 +12,7 @@
 #define HAL_BOARD_LINUX    7
 #define HAL_BOARD_VRBRAIN  8
 #define HAL_BOARD_QURT     9
+#define HAL_BOARD_CHIBIOS  10
 #define HAL_BOARD_EMPTY   99
 
 /* Default board subtype is -1 */
@@ -56,6 +57,14 @@
 #define HAL_BOARD_SUBTYPE_VRUBRAIN_V52     4004
 #define HAL_BOARD_SUBTYPE_VRCORE_V10       4005
 #define HAL_BOARD_SUBTYPE_VRBRAIN_V54      4006
+
+
+/* HAL CHIBIOS sub-types, starting at 5000 */
+#define HAL_BOARD_SUBTYPE_CHIBIOS_SKYVIPER_F412	5000
+#define HAL_BOARD_SUBTYPE_CHIBIOS_FMUV3         5001
+#define HAL_BOARD_SUBTYPE_CHIBIOS_FMUV4         5002
+#define HAL_BOARD_SUBTYPE_CHIBIOS_MINDPXV2      5003
+#define HAL_BOARD_SUBTYPE_CHIBIOS_SPARKY2       5004
 
 /* InertialSensor driver types */
 #define HAL_INS_MPU60XX_SPI  2
@@ -111,6 +120,7 @@
 #define HAL_COMPASS_OCPOC_ZYNQ         17
 #define HAL_COMPASS_EDGE               18
 #define HAL_COMPASS_LIS3MDL            19
+#define HAL_COMPASS_MAG3110            20
 
 /* Heat Types */
 #define HAL_LINUX_HEAT_PWM 1
@@ -147,6 +157,8 @@
     #include <AP_HAL/board/qurt.h>
 #elif CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     #include <AP_HAL/board/vrbrain.h>
+#elif CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
+	#include <AP_HAL/board/chibios.h>
 #else
 #error "Unknown CONFIG_HAL_BOARD type"
 #endif
@@ -179,9 +191,17 @@
 #define HAL_WITH_UAVCAN 0
 #endif
 
+#ifndef HAL_WITH_IO_MCU
+#define HAL_WITH_IO_MCU 0
+#endif
+
 // this is used as a general mechanism to make a 'small' build by
 // dropping little used features. We use this to allow us to keep
 // FMUv2 going for as long as possible
 #ifndef HAL_MINIMIZE_FEATURES
 #define HAL_MINIMIZE_FEATURES       0
+#endif
+
+#ifndef HAL_OS_FATFS_IO
+#define HAL_OS_FATFS_IO 0
 #endif
