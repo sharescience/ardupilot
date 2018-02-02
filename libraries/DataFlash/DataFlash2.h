@@ -9,6 +9,10 @@
 #define FINITE_STATE_MACHINE_LABELS "TimeUS,id,stat"
 #define FINITE_STATE_MACHINE_FMT    "QHB"
 
+#define SCHEDULER_TASK_NAME   "SCHE"
+#define SCHEDULER_TASK_LABELS "TimeUS,id,name"
+#define SCHEDULER_TASK_FMT    "QBZ"
+
 enum FiniteStateMachineID {
 	MULTI_COPTER_MOTOR_SPOOL_MODE,
 	ALT_HOLD_MODE_STATE,
@@ -31,6 +35,7 @@ public:
     }
 
     void Log_Write_FSM(uint16_t id, uint8_t state);
+    void Log_Write_SCH(uint8_t i, const char *fun);
 
 private:
     static DataFlash2 *_instance;

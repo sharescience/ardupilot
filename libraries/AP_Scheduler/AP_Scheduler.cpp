@@ -23,6 +23,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Param/AP_Param.h>
 #include <AP_Vehicle/AP_Vehicle.h>
+#include <DataFlash/DataFlash2.h>
 #include <stdio.h>
 
 #if APM_BUILD_TYPE(APM_BUILD_ArduCopter) || APM_BUILD_TYPE(APM_BUILD_ArduSub)
@@ -50,6 +51,13 @@ const AP_Param::GroupInfo AP_Scheduler::var_info[] = {
     // @RebootRequired: True
     // @User: Advanced
     AP_GROUPINFO("LOOP_RATE",  1, AP_Scheduler, _loop_rate_hz, SCHEDULER_DEFAULT_LOOP_RATE),
+
+    // @Param: LOG_ENAB
+    // @DisplayName: Scheduling log enable
+    // @Description: Write scheduler tasks information into log file
+	// @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("LOG_ENAB",  2, AP_Scheduler, _log_enable, 0),
 
     AP_GROUPEND
 };
@@ -132,6 +140,9 @@ void AP_Scheduler::run(uint32_t time_available)
                     hal.util->perf_begin(_perf_counters[i]);
                 }
                 _tasks[i].function();
+                if(_log_enable){
+                	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name);
+                }
                 if (_debug > 1 && _perf_counters && _perf_counters[i]) {
                     hal.util->perf_end(_perf_counters[i]);
                 }

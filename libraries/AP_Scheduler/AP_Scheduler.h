@@ -136,4 +136,8 @@ private:
 
     // performance counters
     AP_HAL::Util::perf_counter_t *_perf_counters;
+
+private:
+    // used to write log
+    AP_Int8 _log_enable;
 };
