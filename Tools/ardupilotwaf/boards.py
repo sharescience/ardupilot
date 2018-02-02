@@ -259,6 +259,8 @@ class chibios(Board):
             CONFIG_HAL_BOARD = 'HAL_BOARD_CHIBIOS',
             HAVE_OCLOEXEC = 0,
             HAVE_STD_NULLPTR_T = 0,
+            USE_EVENT_MANAGER = 1,
+            UDF_AC_ATTITUDE_CONTROL = 1,
         )
 
         env.AP_LIBRARIES += [
