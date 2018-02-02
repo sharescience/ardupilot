@@ -55,7 +55,7 @@ const AP_Param::GroupInfo AP_Scheduler::var_info[] = {
     // @Param: LOG_ENAB
     // @DisplayName: Scheduling log enable
     // @Description: Write scheduler tasks information into log file
-	// @Values: 0:Disabled,1:Enabled
+	// @Values: 0:Disabled,1:Running,2:Slip,3:Overrun
     // @User: Advanced
     AP_GROUPINFO("LOG_ENAB",  2, AP_Scheduler, _log_enable, 0),
 
@@ -130,6 +130,9 @@ void AP_Scheduler::run(uint32_t time_available)
                              (unsigned)interval_ticks,
                              (unsigned)_task_time_allowed);
                 }
+                if(2 == _log_enable){
+                	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name, interval_ticks);
+                }
             }
 
             if (_task_time_allowed <= time_available) {
@@ -140,8 +143,8 @@ void AP_Scheduler::run(uint32_t time_available)
                     hal.util->perf_begin(_perf_counters[i]);
                 }
                 _tasks[i].function();
-                if(_log_enable){
-                	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name);
+                if(1 == _log_enable){
+                	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name, 0 ,time_available);
                 }
                 if (_debug > 1 && _perf_counters && _perf_counters[i]) {
                     hal.util->perf_end(_perf_counters[i]);
@@ -164,6 +167,9 @@ void AP_Scheduler::run(uint32_t time_available)
                                  _tasks[i].name,
                                  (unsigned)time_taken,
                                  (unsigned)_task_time_allowed);
+                    }
+                    if(3 == _log_enable){
+                    	DataFlash2::instance()->Log_Write_SCH(i, _tasks[i].name, 0, time_taken, _task_time_allowed);
                     }
                 }
                 if (time_taken >= time_available) {
