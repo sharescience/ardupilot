@@ -32,6 +32,7 @@ const AP_RAMTRON::ramtron_id AP_RAMTRON::ramtron_ids[] = {
     { 0x26, 0x08, 512, 3}, // CY15B104Q
     { 0x27, 0x03, 128, 3}, // MB85RS1MT
     { 0x05, 0x09, 32,  3}, // B85RS256B
+	{ 0x04, 0x09, 16,  2}, // B85RS128B
 };
 
 // initialise the driver
