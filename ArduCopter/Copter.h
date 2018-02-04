@@ -539,10 +539,10 @@ private:
 
     // Event Manager
 #if USE_EVENT_MANAGER == ENABLED
-    AP_EventManager event_manager = AP_EventManager::create(FUNCTOR_BIND_MEMBER(&Copter::event_on_response, void),
-    		                                                FUNCTOR_BIND_MEMBER(&Copter::write_event_on_log, void, const uint8_t &),
-    		                                                FUNCTOR_BIND_MEMBER(&Copter::write_event_off_log, void, const uint8_t &),
-				                                            &gps);
+    AP_EventManager event_manager{FUNCTOR_BIND_MEMBER(&Copter::event_on_response, void),
+    		                      FUNCTOR_BIND_MEMBER(&Copter::write_event_on_log, void, const uint8_t &),
+			                      FUNCTOR_BIND_MEMBER(&Copter::write_event_off_log, void, const uint8_t &),
+			                      &gps};
 #endif
 
     // Pilot Input Management Library

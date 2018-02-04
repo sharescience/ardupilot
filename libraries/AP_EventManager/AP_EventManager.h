@@ -22,14 +22,21 @@ public:
     FUNCTOR_TYPEDEF(event_response_fn_t, void);
     FUNCTOR_TYPEDEF(write_event_log_fn_t, void, const uint8_t&);
 
-    static AP_EventManager create(event_response_fn_t  event_on_response,
-	                              write_event_log_fn_t write_event_on_log,
-	                              write_event_log_fn_t write_event_off_log,
-	                              AP_GPS*              gps) {
-        return AP_EventManager(event_on_response,
-        		               write_event_on_log,
-							   write_event_off_log,
-							   gps);
+    // Constructor
+    AP_EventManager(event_response_fn_t  event_on_response,
+    		        write_event_log_fn_t write_event_on_log,
+			        write_event_log_fn_t write_event_off_log,
+			        AP_GPS*              gps)
+    		: _gps(gps)
+    		, _event_on_respond(event_on_response)
+    		, _write_event_on_log(write_event_on_log)
+    		, _write_event_off_log(write_event_off_log)
+    		, _should_be_responded_id(0)
+    {
+    	_instance = this;
+
+    	// setup parameter defaults
+        AP_Param::setup_object_defaults(this, var_info);
     }
 
     // get now timestamp
@@ -74,23 +81,6 @@ public:
 //    void send_mavlink_event_status(mavlink_channel_t chan);
 
 private:
-    // Constructor
-    AP_EventManager(event_response_fn_t  event_on_response,
-                                     write_event_log_fn_t write_event_on_log,
-                                     write_event_log_fn_t write_event_off_log,
-                                     AP_GPS*              gps)
-    		: _gps(gps)
-    		, _event_on_respond(event_on_response)
-    		, _write_event_on_log(write_event_on_log)
-    		, _write_event_off_log(write_event_off_log)
-    		, _should_be_responded_id(0)
-    {
-    	_instance = this;
-
-    	// setup parameter defaults
-        AP_Param::setup_object_defaults(this, var_info);
-    }
-
     AP_GPS*      _gps;
     AP_Bitmask   _bits;
 
