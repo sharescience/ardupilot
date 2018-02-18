@@ -1,15 +1,15 @@
 #include "PerfInfo.h"
 
 #include <DataFlash/DataFlash.h>
+#include <GCS_MAVLink/GCS.h>
+
+extern const AP_HAL::HAL& hal;
 
 //
 //  high level performance monitoring
 //
 //  we measure the main loop time
 //
-
-// 400hz loop update rate
-#define OVERTIME_THRESHOLD_MICROS 3000
 
 // reset - reset all records of loop time to zero
 void AP::PerfInfo::reset()
@@ -46,11 +46,28 @@ void AP::PerfInfo::check_loop_time(uint32_t time_in_micros)
     if( min_time == 0 || time_in_micros < min_time) {
         min_time = time_in_micros;
     }
-    if( time_in_micros > OVERTIME_THRESHOLD_MICROS ) {
+    if (time_in_micros > overtime_threshold_micros) {
         long_running++;
     }
     sigma_time += time_in_micros;
     sigmasquared_time += time_in_micros * time_in_micros;
+
+    /* we keep a filtered loop time for use as G_Dt which is the
+       predicted time for the next loop. We remove really excessive
+       times from this calculation so as not to throw it off too far
+       in case we get a single long loop
+
+       Note that the time we use here is the time between calls to
+       check_loop_time() not the time from loop start to loop
+       end. This is because we are using the time for time between
+       calls to controllers, which has nothing to do with cpu speed.
+    */
+    const uint32_t now = AP_HAL::micros();
+    const uint32_t loop_time_us = now - last_check_us;
+    last_check_us = now;
+    if (loop_time_us < overtime_threshold_micros + 10000UL) {
+        filtered_loop_time = 0.99f * filtered_loop_time + 0.01f * loop_time_us * 1.0e-6f;
+    }
 }
 
 // get_num_loops: return number of loops used for recording performance
@@ -93,4 +110,33 @@ uint32_t AP::PerfInfo::get_avg_time() const
 uint32_t AP::PerfInfo::get_stddev_time() const
 {
     return sqrt((sigmasquared_time - (sigma_time*sigma_time)/loop_count) / loop_count);
+}
+
+// get_filtered_time - return low pass filtered loop time in seconds
+float AP::PerfInfo::get_filtered_time() const
+{
+    return filtered_loop_time;
+}
+
+void AP::PerfInfo::update_logging()
+{
+    gcs().send_text(MAV_SEVERITY_WARNING,
+                    "PERF: %u/%u max=%lu min=%lu F=%u sd=%lu",
+                    (unsigned)get_num_long_running(),
+                    (unsigned)get_num_loops(),
+                    (unsigned long)get_max_time(),
+                    (unsigned long)get_min_time(),
+                    (unsigned)(get_filtered_time()*1.0e6),
+                    (unsigned long)get_stddev_time());
+}
+
+void AP::PerfInfo::set_loop_rate(uint16_t rate_hz)
+{
+    // allow a 20% overrun before we consider a loop "slow":
+    overtime_threshold_micros = 1000000/rate_hz * 1.2f;
+
+    if (loop_rate_hz != rate_hz) {
+        loop_rate_hz = rate_hz;
+        filtered_loop_time = 1.0f / rate_hz;
+    }
 }

@@ -64,6 +64,7 @@
 #include <AP_Declination/AP_Declination.h> // ArduPilot Mega Declination Helper Library
 #include <DataFlash/DataFlash.h>
 #include <AP_Scheduler/AP_Scheduler.h>       // main loop scheduler
+#include <AP_Scheduler/PerfInfo.h>                  // loop perf monitoring
 
 #include <AP_Navigation/AP_Navigation.h>
 #include <AP_L1_Control/AP_L1_Control.h>
@@ -391,7 +392,7 @@ private:
     int32_t altitude_error_cm;
 
     // Battery Sensors
-    AP_BattMonitor battery;
+    AP_BattMonitor battery{MASK_LOG_CURRENT};
 
 #if FRSKY_TELEM_ENABLED == ENABLED
     // FrSky telemetry support
@@ -734,32 +735,8 @@ private:
     // This is the time between calls to the DCM algorithm and is the Integration time for the gyros.
     float G_Dt = 0.02f;
 
-    struct {
-        // Performance monitoring
-        // Timer used to accrue data and trigger recording of the performanc monitoring log message
-        uint32_t start_ms;
-
-        // The maximum and minimum main loop execution time, in microseconds, recorded in the current performance monitoring interval
-        uint32_t G_Dt_max;
-        uint32_t G_Dt_min;
-
-        // System Timers
-        // Time in microseconds of start of main control loop
-        uint32_t fast_loopTimer_us;
-
-        // Number of milliseconds used in last main loop cycle
-        uint32_t delta_us_fast_loop;
-
-        // Counter of main loop executions.  Used for performance monitoring and failsafe processing
-        uint16_t mainLoop_count;
-
-        // number of long loops
-        uint16_t num_long;
-
-        // accumulated lost log messages
-        uint32_t last_log_dropped;
-    } perf;
-
+    // loop performance monitoring:
+    AP::PerfInfo perf_info;
     struct {
         uint32_t last_trim_check;
         uint32_t last_trim_save;
@@ -834,7 +811,6 @@ private:
     void Log_Write_Status();
     void Log_Write_Sonar();
     void Log_Write_Optflow();
-    void Log_Write_Current();
     void Log_Arm_Disarm();
     void Log_Write_GPS(uint8_t instance);
     void Log_Write_IMU();
@@ -973,7 +949,6 @@ private:
     void check_short_failsafe();
     void startup_INS_ground(void);
     void update_notify();
-    void resetPerfData(void);
     bool should_log(uint32_t mask);
     int8_t throttle_percentage(void);
     void change_arm_state(void);
@@ -1000,7 +975,6 @@ private:
     void airspeed_ratio_update(void);
     void update_mount(void);
     void update_trigger(void);    
-    void log_perf_info(void);
     void compass_save(void);
     void update_logging1(void);
     void update_logging2(void);

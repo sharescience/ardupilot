@@ -36,7 +36,7 @@ void Copter::ModeAutoTune::Log_Write_AutoTune(uint8_t _axis, uint8_t tune_step, 
         new_gain_sp : new_gain_sp,
         new_ddt     : new_ddt
     };
-    _copter.DataFlash.WriteBlock(&pkt, sizeof(pkt));
+    copter.DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
 struct PACKED log_AutoTuneDetails {
@@ -55,18 +55,9 @@ void Copter::ModeAutoTune::Log_Write_AutoTuneDetails(float angle_cd, float rate_
         angle_cd    : angle_cd,
         rate_cds    : rate_cds
     };
-    _copter.DataFlash.WriteBlock(&pkt, sizeof(pkt));
+    copter.DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 #endif
-
-// Write a Current data packet
-void Copter::Log_Write_Current()
-{
-    DataFlash.Log_Write_Current(battery);
-
-    // also write power status
-    DataFlash.Log_Write_Power();
-}
 
 struct PACKED log_Optflow {
     LOG_PACKET_HEADER;
@@ -187,37 +178,6 @@ void Copter::Log_Write_Control_Tuning()
         climb_rate          : climb_rate
     };
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
-}
-
-struct PACKED log_Performance {
-    LOG_PACKET_HEADER;
-    uint64_t time_us;
-    uint16_t num_long_running;
-    uint16_t num_loops;
-    uint32_t max_time;
-    int16_t  pm_test;
-    uint8_t i2c_lockup_count;
-    uint16_t ins_error_count;
-    uint32_t log_dropped;
-    uint32_t mem_avail;
-};
-
-// Write a performance monitoring packet
-void Copter::Log_Write_Performance()
-{
-    struct log_Performance pkt = {
-        LOG_PACKET_HEADER_INIT(LOG_PERFORMANCE_MSG),
-        time_us          : AP_HAL::micros64(),
-        num_long_running : perf_info.get_num_long_running(),
-        num_loops        : perf_info.get_num_loops(),
-        max_time         : perf_info.get_max_time(),
-        pm_test          : pmTest1,
-        i2c_lockup_count : 0,
-        ins_error_count  : ins.error_count(),
-        log_dropped      : DataFlash.num_dropped() - perf_info.get_num_dropped(),
-        hal.util->available_memory()
-    };
-    DataFlash.WriteCriticalBlock(&pkt, sizeof(pkt));
 }
 
 // Write an attitude packet
@@ -648,8 +608,6 @@ const struct LogStructure Copter::log_structure[] = {
        "NTUN", "Qffffffffff", "TimeUS,DPosX,DPosY,PosX,PosY,DVelX,DVelY,VelX,VelY,DAccX,DAccY", "smmmmnnnnoo", "FBBBBBBBBBB" },
     { LOG_CONTROL_TUNING_MSG, sizeof(log_Control_Tuning),
       "CTUN", "Qffffffeccfhh", "TimeUS,ThI,ABst,ThO,ThH,DAlt,Alt,BAlt,DSAlt,SAlt,TAlt,DCRt,CRt", "s----mmmmmmnn", "F----00BBBBBB" },
-    { LOG_PERFORMANCE_MSG, sizeof(log_Performance), 
-      "PM",  "QHHIhBHII",    "TimeUS,NLon,NLoop,MaxT,PMT,I2CErr,INSErr,LogDrop,Mem", "s-------b", "F-------0" },
     { LOG_MOTBATT_MSG, sizeof(log_MotBatt),
       "MOTB", "Qffff",  "TimeUS,LiftMax,BatVolt,BatRes,ThLimit", "s-vw-", "F-00-" },
     { LOG_EVENT_MSG, sizeof(log_Event),         
@@ -700,7 +658,6 @@ void Copter::Log_Write_AutoTune(uint8_t axis, uint8_t tune_step, float meas_targ
                                 float meas_min, float meas_max, float new_gain_rp, \
                                 float new_gain_rd, float new_gain_sp, float new_ddt) {}
 void Copter::Log_Write_AutoTuneDetails(float angle_cd, float rate_cds) {}
-void Copter::Log_Write_Current() {}
 void Copter::Log_Write_Nav_Tuning() {}
 void Copter::Log_Write_Control_Tuning() {}
 void Copter::Log_Write_Performance() {}

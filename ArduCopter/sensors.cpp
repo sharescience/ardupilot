@@ -24,12 +24,6 @@ void Copter::read_barometer(void)
     motors->set_air_density_ratio(barometer.get_air_density_ratio());
 }
 
-// try to accumulate a baro reading
-void Copter::barometer_accumulate(void)
-{
-    barometer.accumulate();
-}
-
 void Copter::init_rangefinder(void)
 {
 #if RANGEFINDER_ENABLED == ENABLED
@@ -185,17 +179,14 @@ void Copter::read_battery(void)
 {
     battery.read();
 
-    // update compass with current value
-    if (battery.has_current()) {
-        compass.set_current(battery.current_amps());
-    }
-
     // update motors with voltage and current
     if (battery.get_type() != AP_BattMonitor_Params::BattMonitor_TYPE_NONE) {
         motors->set_voltage(battery.voltage());
-        AP_Notify::flags.battery_voltage = battery.voltage();
     }
+
     if (battery.has_current()) {
+        compass.set_current(battery.current_amps());
+
         motors->set_current(battery.current_amps());
         motors->set_resistance(battery.get_resistance());
         motors->set_voltage_resting_estimate(battery.voltage_resting_estimate());
@@ -209,11 +200,6 @@ void Copter::read_battery(void)
 #else
         set_failsafe_battery(true);
 #endif
-    }
-
-    // log battery info to the dataflash
-    if (should_log(MASK_LOG_CURRENT)) {
-        Log_Write_Current();
     }
 }
 
@@ -272,36 +258,12 @@ void Copter::accel_cal_update()
 #endif
 }
 
-#if GRIPPER_ENABLED == ENABLED
-// gripper update
-void Copter::gripper_update()
-{
-    g2.gripper.update();
-}
-#endif
-
-/*
-  update AP_Button
- */
-void Copter::button_update(void)
-{
-    g2.button.update();
-}
-
 // initialise proximity sensor
 void Copter::init_proximity(void)
 {
 #if PROXIMITY_ENABLED == ENABLED
     g2.proximity.init();
     g2.proximity.set_rangefinder(&rangefinder);
-#endif
-}
-
-// update proximity sensor
-void Copter::update_proximity(void)
-{
-#if PROXIMITY_ENABLED == ENABLED
-    g2.proximity.update();
 #endif
 }
 
@@ -383,6 +345,7 @@ void Copter::update_sensor_status_flags(void)
     case GUIDED_NOGPS:
     case SPORT:
     case AUTOTUNE:
+    case FLOWHOLD:
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_Z_ALTITUDE_CONTROL;
         break;
     default:
@@ -514,12 +477,6 @@ void Copter::init_beacon()
     g2.beacon.init();
 }
 
-// update beacons
-void Copter::update_beacon()
-{
-    g2.beacon.update();
-}
-
 // init visual odometry sensor
 void Copter::init_visual_odom()
 {
@@ -554,13 +511,17 @@ void Copter::update_visual_odom()
 // winch and wheel encoder initialisation
 void Copter::winch_init()
 {
+#if WINCH_ENABLED == ENABLED
     g2.wheel_encoder.init();
     g2.winch.init(&g2.wheel_encoder);
+#endif
 }
 
 // winch and wheel encoder update
 void Copter::winch_update()
 {
+#if WINCH_ENABLED == ENABLED
     g2.wheel_encoder.update();
     g2.winch.update();
+#endif
 }

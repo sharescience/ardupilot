@@ -108,6 +108,7 @@ enum control_mode_t {
     AVOID_ADSB =   19,  // automatic avoidance of obstacles in the macro scale - e.g. full-sized aircraft
     GUIDED_NOGPS = 20,  // guided mode but only accepts attitude and altitude
     SMART_RTL =    21,  // SMART_RTL returns to home by retracing its steps
+    FLOWHOLD  =    22,  // FLOWHOLD holds position with optical flow without rangefinder
 };
 
 enum mode_reason_t {
@@ -129,6 +130,7 @@ enum mode_reason_t {
     MODE_REASON_AVOIDANCE_RECOVERY,
     MODE_REASON_THROW_COMPLETE,
     MODE_REASON_TERMINATE,
+    MODE_REASON_TMODE,
 };
 
 // Tuning enumeration
@@ -313,7 +315,6 @@ enum DevOptions {
 #define TYPE_GROUNDSTART_MSG            0x01
 #define LOG_CONTROL_TUNING_MSG          0x04
 #define LOG_NAV_TUNING_MSG              0x05
-#define LOG_PERFORMANCE_MSG             0x06
 #define LOG_OPTFLOW_MSG                 0x0C
 #define LOG_EVENT_MSG                   0x0D
 #define LOG_PID_MSG                     0x0E    // deprecated

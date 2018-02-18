@@ -54,33 +54,6 @@ void Plane::Log_Write_Fast(void)
 }
 
 
-struct PACKED log_Performance {
-    LOG_PACKET_HEADER;
-    uint64_t time_us;
-    uint16_t num_long;
-    uint16_t main_loop_count;
-    uint32_t g_dt_max;
-    uint32_t g_dt_min;
-    uint32_t log_dropped;
-    uint32_t mem_avail;
-};
-
-// Write a performance monitoring packet. Total length : 19 bytes
-void Plane::Log_Write_Performance()
-{
-    struct log_Performance pkt = {
-        LOG_PACKET_HEADER_INIT(LOG_PERFORMANCE_MSG),
-        time_us         : AP_HAL::micros64(),
-        num_long        : perf.num_long,
-        main_loop_count : perf.mainLoop_count,
-        g_dt_max        : perf.G_Dt_max,
-        g_dt_min        : perf.G_Dt_min,
-        log_dropped     : DataFlash.num_dropped() - perf.last_log_dropped,
-        hal.util->available_memory()
-    };
-    DataFlash.WriteCriticalBlock(&pkt, sizeof(pkt));
-}
-
 struct PACKED log_Startup {
     LOG_PACKET_HEADER;
     uint64_t time_us;
@@ -263,14 +236,6 @@ struct PACKED log_Arm_Disarm {
     uint16_t arm_checks;
 };
 
-void Plane::Log_Write_Current()
-{
-    DataFlash.Log_Write_Current(battery);
-
-    // also write power status
-    DataFlash.Log_Write_Power();
-}
-
 void Plane::Log_Arm_Disarm() {
     struct log_Arm_Disarm pkt = {
         LOG_PACKET_HEADER_INIT(LOG_ARM_DISARM_MSG),
@@ -370,8 +335,6 @@ void Plane::Log_Write_Home_And_Origin()
 // units and "Format characters" for field type information
 const struct LogStructure Plane::log_structure[] = {
     LOG_COMMON_STRUCTURES,
-    { LOG_PERFORMANCE_MSG, sizeof(log_Performance), 
-      "PM",  "QHHIIII",  "TimeUS,NLon,NLoop,MaxT,MinT,LogDrop,Mem", "ss----b", "FC----0" },
     { LOG_STARTUP_MSG, sizeof(log_Startup),         
       "STRT", "QBH",         "TimeUS,SType,CTot", "s--", "F--" },
     { LOG_CTUN_MSG, sizeof(log_Control_Tuning),     
@@ -439,7 +402,6 @@ void Plane::Log_Write_Sonar() {}
 void Plane::Log_Write_Optflow() {}
  #endif
 
-void Plane::Log_Write_Current() {}
 void Plane::Log_Arm_Disarm() {}
 void Plane::Log_Write_GPS(uint8_t instance) {}
 void Plane::Log_Write_IMU() {}

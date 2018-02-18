@@ -80,7 +80,6 @@
 #include <AC_Fence/AC_Fence.h>           // Arducopter Fence library
 #include <AC_Avoidance/AC_Avoid.h>           // Arducopter stop at fence library
 #include <AP_Scheduler/AP_Scheduler.h>       // main loop scheduler
-#include <AP_Scheduler/PerfInfo.h>       // loop perf monitoring
 #include <AP_RCMapper/AP_RCMapper.h>        // RC input mapping library
 #include <AP_Notify/AP_Notify.h>          // Notify library
 #include <AP_BattMonitor/AP_BattMonitor.h>     // Battery monitor library
@@ -96,8 +95,7 @@
 #include <AP_Arming/AP_Arming.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
 #include <AP_SmartRTL/AP_SmartRTL.h>
-#include <AP_WheelEncoder/AP_WheelEncoder.h>
-#include <AP_Winch/AP_Winch.h>
+#include <AP_TempCalibration/AP_TempCalibration.h>
 
 // Configuration
 #include "defines.h"
@@ -134,6 +132,15 @@
 #include "afs_copter.h"
 #endif
 
+#if TOY_MODE_ENABLED == ENABLED
+#include "toy_mode.h"
+#endif
+
+#if WINCH_ENABLED == ENABLED
+#include <AP_WheelEncoder/AP_WheelEncoder.h>
+#include <AP_Winch/AP_Winch.h>
+#endif
+
 // Local modules
 #include "Parameters.h"
 #include "avoidance_adsb.h"
@@ -155,6 +162,7 @@ public:
     friend class AP_AdvancedFailsafe_Copter;
 #endif
     friend class AP_Arming_Copter;
+    friend class ToyMode;
 
     Copter(void);
 
@@ -173,7 +181,7 @@ private:
     ParametersG2 g2;
 
     // main loop scheduler
-    AP_Scheduler scheduler;
+    AP_Scheduler scheduler{FUNCTOR_BIND_MEMBER(&Copter::fast_loop, void)};
 
     // AP_Notify instance
     AP_Notify notify;
@@ -328,6 +336,9 @@ private:
 
     RCMapper rcmap;
 
+    // intertial nav alt when we armed
+    float arming_altitude_m;
+    
     // board specific config
     AP_BoardConfig BoardConfig;
 
@@ -393,7 +404,7 @@ private:
     int32_t initial_armed_bearing;
 
     // Battery Sensors
-    AP_BattMonitor battery;
+    AP_BattMonitor battery{MASK_LOG_CURRENT};
 
 #if FRSKY_TELEM_ENABLED == ENABLED
     // FrSky telemetry support
@@ -415,9 +426,6 @@ private:
 
     // filtered pilot's throttle input used to cancel landing if throttle held high
     LowPassFilterFloat rc_throttle_control_in_filter;
-
-    // loop performance monitoring:
-    AP::PerfInfo perf_info;
 
     // 3D Location vectors
     // Current location of the vehicle (altitude is relative to home)
@@ -465,15 +473,8 @@ private:
     AC_WPNav *wp_nav;
     AC_Circle *circle_nav;
 
-    // Performance monitoring
-    int16_t pmTest1;
-
     // System Timers
     // --------------
-    // Time in microseconds of main control loop
-    uint32_t fast_loopTimer;
-    // Counter of main loop executions.  Used for performance monitoring and failsafe processing
-    uint16_t mainLoop_count;
     // arm_time_ms - Records when vehicle was armed. Will be Zero if we are disarmed.
     uint32_t arm_time_ms;
 
@@ -618,23 +619,16 @@ private:
     void set_motor_emergency_stop(bool b);
 
     // ArduCopter.cpp
-    void perf_update(void);
-    void stats_update();
     void fast_loop();
     void rc_loop();
     void throttle_loop();
-    void update_mount();
-    void update_trigger(void);
     void update_batt_compass(void);
     void fourhundred_hz_logging();
     void ten_hz_logging_loop();
     void twentyfive_hz_logging();
-    void dataflash_periodic(void);
-    void ins_periodic();
     void three_hz_loop();
     void one_hz_loop();
     void update_GPS(void);
-    void smart_rtl_save_position();
     void init_simple_bearing();
     void update_simple_mode(void);
     void update_super_simple_bearing(bool force_update);
@@ -766,11 +760,7 @@ private:
     // landing_gear.cpp
     void landinggear_update();
 
-    // leds.cpp
-    void update_notify();
-
     // Log.cpp
-    void Log_Write_Current();
     void Log_Write_Optflow();
     void Log_Write_Nav_Tuning();
     void Log_Write_Control_Tuning();
@@ -862,11 +852,11 @@ private:
     void set_throttle_and_failsafe(uint16_t throttle_pwm);
     void set_throttle_zero_flag(int16_t throttle_control);
     void radio_passthrough_to_motors();
+    int16_t get_throttle_mid(void);
 
     // sensors.cpp
     void init_barometer(bool full_calibration);
     void read_barometer(void);
-    void barometer_accumulate(void);
     void init_rangefinder(void);
     void read_rangefinder(void);
     bool rangefinder_alt_ok();
@@ -879,13 +869,10 @@ private:
     void read_receiver_rssi(void);
     void compass_cal_update(void);
     void accel_cal_update(void);
-    void gripper_update();
-    void button_update();
     void init_proximity();
     void update_proximity();
     void update_sensor_status_flags(void);
     void init_beacon();
-    void update_beacon();
     void init_visual_odom();
     void update_visual_odom();
     void winch_init();
@@ -955,34 +942,37 @@ private:
 
     Mode *flightmode;
 #if FRAME_CONFIG == HELI_FRAME
-    ModeAcro_Heli mode_acro{*this};
+    ModeAcro_Heli mode_acro;
 #else
-    ModeAcro mode_acro{*this};
+    ModeAcro mode_acro;
 #endif
-    ModeAltHold mode_althold{*this};
-    ModeAuto mode_auto{*this, mission, circle_nav};
+    ModeAltHold mode_althold;
+    ModeAuto mode_auto;
 #if AUTOTUNE_ENABLED == ENABLED
-    ModeAutoTune mode_autotune{*this};
+    ModeAutoTune mode_autotune;
 #endif
-    ModeBrake mode_brake{*this};
-    ModeCircle mode_circle{*this, circle_nav};
-    ModeDrift mode_drift{*this};
-    ModeFlip mode_flip{*this};
-    ModeGuided mode_guided{*this};
-    ModeLand mode_land{*this};
-    ModeLoiter mode_loiter{*this};
-    ModePosHold mode_poshold{*this};
-    ModeRTL mode_rtl{*this};
+    ModeBrake mode_brake;
+    ModeCircle mode_circle;
+    ModeDrift mode_drift;
+    ModeFlip mode_flip;
+    ModeGuided mode_guided;
+    ModeLand mode_land;
+    ModeLoiter mode_loiter;
+    ModePosHold mode_poshold;
+    ModeRTL mode_rtl;
 #if FRAME_CONFIG == HELI_FRAME
-    ModeStabilize_Heli mode_stabilize{*this};
+    ModeStabilize_Heli mode_stabilize;
 #else
-    ModeStabilize mode_stabilize{*this};
+    ModeStabilize mode_stabilize;
 #endif
-    ModeSport mode_sport{*this};
-    ModeAvoidADSB mode_avoid_adsb{*this};
-    ModeThrow mode_throw{*this};
-    ModeGuidedNoGPS mode_guided_nogps{*this};
-    ModeSmartRTL mode_smartrtl{*this};
+    ModeSport mode_sport;
+    ModeAvoidADSB mode_avoid_adsb;
+    ModeThrow mode_throw;
+    ModeGuidedNoGPS mode_guided_nogps;
+    ModeSmartRTL mode_smartrtl;
+#if !HAL_MINIMIZE_FEATURES && OPTFLOW == ENABLED
+    ModeFlowHold mode_flowhold;
+#endif
 
     // mode.cpp
     Mode *mode_from_mode_num(const uint8_t mode);
