@@ -83,9 +83,15 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(ins_periodic,           50,     50),
     SCHED_TASK(avoidance_adsb_update,  10,    100),
     SCHED_TASK(button_update,           5,    100),
+#if STATS_ENABLED == ENABLED
     SCHED_TASK(stats_update,            1,    100),
+#endif
+#if GRIPPER_ENABLED == ENABLED
+    SCHED_TASK_CLASS(AP_Gripper, &plane.g2.gripper, update, 10, 75),
+#endif
 };
 
+#if STATS_ENABLED == ENABLED
 /*
   update AP_Stats
  */
@@ -93,7 +99,7 @@ void Plane::stats_update(void)
 {
     g2.stats.update();
 }
-
+#endif
 
 void Plane::setup() 
 {
@@ -256,7 +262,7 @@ void Plane::update_logging2(void)
         Log_Write_RC();
 
     if (should_log(MASK_LOG_IMU))
-        DataFlash.Log_Write_Vibration(ins);
+        DataFlash.Log_Write_Vibration();
 }
 
 
@@ -750,7 +756,7 @@ void Plane::update_navigation()
     
     switch(control_mode) {
     case AUTO:
-        if (home_is_set != HOME_UNSET) {
+        if (ahrs.home_is_set()) {
             mission.update();
         }
         break;

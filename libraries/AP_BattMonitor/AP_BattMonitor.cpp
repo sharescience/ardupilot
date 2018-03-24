@@ -2,6 +2,9 @@
 #include "AP_BattMonitor_Analog.h"
 #include "AP_BattMonitor_SMBus.h"
 #include "AP_BattMonitor_Bebop.h"
+#if HAL_WITH_UAVCAN
+#include "AP_BattMonitor_UAVCAN.h"
+#endif
 #include <AP_Vehicle/AP_Vehicle_Type.h>
 #include <DataFlash/DataFlash.h>
 
@@ -19,7 +22,6 @@ const AP_Param::GroupInfo AP_BattMonitor::var_info[] = {
     // @Group: 2_
     // @Path: AP_BattMonitor_Params.cpp
     AP_SUBGROUPINFO(_params[1], "2_", 24, AP_BattMonitor, AP_BattMonitor_Params),
-
 
     AP_GROUPEND
 };
@@ -82,6 +84,12 @@ AP_BattMonitor::init()
             case AP_BattMonitor_Params::BattMonitor_TYPE_BEBOP:
 #if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_BEBOP || CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_DISCO
                 drivers[instance] = new AP_BattMonitor_Bebop(*this, state[instance], _params[instance]);
+                _num_instances++;
+#endif
+                break;
+            case AP_BattMonitor_Params::BattMonitor_TYPE_UAVCAN_BatteryInfo:
+#if HAL_WITH_UAVCAN
+                drivers[instance] = new AP_BattMonitor_UAVCAN(*this, state[instance], AP_BattMonitor_UAVCAN::UAVCAN_BATTERY_INFO, _params[instance]);
                 _num_instances++;
 #endif
                 break;
@@ -249,16 +257,16 @@ float AP_BattMonitor::current_amps(uint8_t instance) const {
     }
 }
 
-/// current_total_mah - returns total current drawn since start-up in amp-hours
-float AP_BattMonitor::current_total_mah(uint8_t instance) const {
+/// consumed_mah - returns total current drawn since start-up in milliampere.hours
+float AP_BattMonitor::consumed_mah(uint8_t instance) const {
     if (instance < _num_instances) {
-        return state[instance].current_total_mah;
+        return state[instance].consumed_mah;
     } else {
         return 0.0f;
     }
 }
 
-/// consumed_wh - returns energy consumed since start-up in watt-hours
+/// consumed_wh - returns energy consumed since start-up in Watt.hours
 float AP_BattMonitor::consumed_wh(uint8_t instance) const {
     if (instance < _num_instances) {
         return state[instance].consumed_wh;
@@ -323,7 +331,7 @@ bool AP_BattMonitor::exhausted(uint8_t instance, float low_voltage, float min_ca
 
     // check capacity if current monitoring is enabled
     if (has_current(instance) && (min_capacity_mah > 0) &&
-        (_params[instance]._pack_capacity - state[instance].current_total_mah < min_capacity_mah)) {
+        (_params[instance]._pack_capacity - state[instance].consumed_mah < min_capacity_mah)) {
         return true;
     }
 

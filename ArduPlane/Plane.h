@@ -31,7 +31,6 @@
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Common/AP_Common.h>
-#include <AP_Menu/AP_Menu.h>
 #include <AP_Param/AP_Param.h>
 #include <StorageManager/StorageManager.h>
 #include <AP_GPS/AP_GPS.h>         // ArduPilot GPS library
@@ -95,6 +94,7 @@
 #include <AP_ADSB/AP_ADSB.h>
 #include <AP_Button/AP_Button.h>
 #include <AP_ICEngine/AP_ICEngine.h>
+#include <AP_Gripper/AP_Gripper.h>
 #include <AP_Landing/AP_Landing.h>
 
 #include "GCS_Mavlink.h"
@@ -122,7 +122,7 @@
 class AP_AdvancedFailsafe_Plane : public AP_AdvancedFailsafe
 {
 public:
-    AP_AdvancedFailsafe_Plane(AP_Mission &_mission, AP_Baro &_baro, const AP_GPS &_gps, const RCMapper &_rcmap);
+    AP_AdvancedFailsafe_Plane(AP_Mission &_mission, const AP_GPS &_gps, const RCMapper &_rcmap);
 
     // called to set all outputs to termination state
     void terminate_vehicle(void);
@@ -214,11 +214,11 @@ private:
 
 // Inertial Navigation EKF
 #if AP_AHRS_NAVEKF_AVAILABLE
-    NavEKF2 EKF2{&ahrs, barometer, rangefinder};
-    NavEKF3 EKF3{&ahrs, barometer, rangefinder};
-    AP_AHRS_NavEKF ahrs{ins, barometer, EKF2, EKF3};
+    NavEKF2 EKF2{&ahrs, rangefinder};
+    NavEKF3 EKF3{&ahrs, rangefinder};
+    AP_AHRS_NavEKF ahrs{EKF2, EKF3};
 #else
-    AP_AHRS_DCM ahrs{ins, barometer};
+    AP_AHRS_DCM ahrs;
 #endif
 
     AP_TECS TECS_controller{ahrs, aparm, landing, g2.soaring_controller};
@@ -626,13 +626,13 @@ private:
             FUNCTOR_BIND_MEMBER(&Plane::disarm_if_autoland_complete, void),
             FUNCTOR_BIND_MEMBER(&Plane::update_flight_stage, void)};
 
-    AP_ADSB adsb{ahrs};
+    AP_ADSB adsb;
 
     // avoidance of adsb enabled vehicles (normally manned vheicles)
     AP_Avoidance_Plane avoidance_adsb{ahrs, adsb};
 
     // Outback Challenge Failsafe Support
-    AP_AdvancedFailsafe_Plane afs {mission, barometer, gps, rcmap};
+    AP_AdvancedFailsafe_Plane afs {mission, gps, rcmap};
 
     /*
       meta data to support counting the number of circles in a loiter
@@ -683,9 +683,6 @@ private:
     // 3D Location vectors
     // Location structure defined in AP_Common
     const struct Location &home = ahrs.get_home();
-
-    // Flag for if we have g_gps lock and have set the home location in AHRS
-    enum HomeState home_is_set = HOME_UNSET;
 
     // The location of the previous waypoint.  Used for track following and altitude ramp calculations
     Location prev_WP_loc {};
@@ -752,7 +749,7 @@ private:
 #endif
 
     // Arming/Disarming mangement class
-    AP_Arming_Plane arming{ahrs, barometer, compass, battery};
+    AP_Arming_Plane arming{ahrs, compass, battery};
 
     AP_Param param_loader {var_info};
 
@@ -792,6 +789,7 @@ private:
     void send_vfr_hud(mavlink_channel_t chan);
     void send_simstate(mavlink_channel_t chan);
     void send_wind(mavlink_channel_t chan);
+    void send_pid_info(const mavlink_channel_t chan, const DataFlash_Class::PID_Info *pid_info, const uint8_t axis, const float achieved);
     void send_pid_tuning(mavlink_channel_t chan);
     void send_rpm(mavlink_channel_t chan);
 

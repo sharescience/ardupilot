@@ -180,11 +180,6 @@ bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
         tracker.send_location(chan);
         break;
 
-    case MSG_LOCAL_POSITION:
-        CHECK_PAYLOAD_SIZE(LOCAL_POSITION_NED);
-        send_local_position(tracker.ahrs);
-        break;
-
     case MSG_NAV_CONTROLLER_OUTPUT:
         CHECK_PAYLOAD_SIZE(NAV_CONTROLLER_OUTPUT);
         tracker.send_nav_controller_output(chan);
@@ -207,17 +202,12 @@ bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
 
     case MSG_RAW_IMU2:
         CHECK_PAYLOAD_SIZE(SCALED_PRESSURE);
-        send_scaled_pressure(tracker.barometer);
+        send_scaled_pressure();
         break;
 
     case MSG_RAW_IMU3:
         CHECK_PAYLOAD_SIZE(SENSOR_OFFSETS);
-        send_sensor_offsets(tracker.ins, tracker.compass, tracker.barometer);
-        break;
-
-    case MSG_AHRS:
-        CHECK_PAYLOAD_SIZE(AHRS);
-        send_ahrs(tracker.ahrs);
+        send_sensor_offsets(tracker.ins, tracker.compass);
         break;
 
     case MSG_SIMSTATE:

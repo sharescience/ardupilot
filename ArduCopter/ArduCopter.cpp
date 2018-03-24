@@ -97,16 +97,24 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #endif
     SCHED_TASK(auto_disarm_check,     10,     50),
     SCHED_TASK(auto_trim,             10,     75),
+#if RANGEFINDER_ENABLED == ENABLED
     SCHED_TASK(read_rangefinder,      20,    100),
+#endif
 #if PROXIMITY_ENABLED == ENABLED
     SCHED_TASK_CLASS(AP_Proximity,         &copter.g2.proximity,        update,         100,  50),
 #endif
+#if BEACON_ENABLED == ENABLED
     SCHED_TASK_CLASS(AP_Beacon,            &copter.g2.beacon,           update,         400,  50),
+#endif
+#if VISUAL_ODOMETRY_ENABLED == ENABLED
     SCHED_TASK(update_visual_odom,   400,     50),
+#endif
     SCHED_TASK(update_altitude,       10,    100),
     SCHED_TASK(run_nav_updates,       50,    100),
     SCHED_TASK(update_throttle_hover,100,     90),
+#if MODE_SMARTRTL_ENABLED == ENABLED
     SCHED_TASK_CLASS(Copter::ModeSmartRTL, &copter.mode_smartrtl,       save_position,    3, 100),
+#endif
     SCHED_TASK(three_hz_loop,          3,     75),
     SCHED_TASK(compass_accumulate,   100,    100),
     SCHED_TASK_CLASS(AP_Baro,              &copter.barometer,           accumulate,      50,  90),
@@ -116,7 +124,9 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #if FRAME_CONFIG == HELI_FRAME
     SCHED_TASK(check_dynamic_flight,  50,     75),
 #endif
+#if LOGGING_ENABLED == ENABLED
     SCHED_TASK(fourhundred_hz_logging,400,    50),
+#endif
     SCHED_TASK_CLASS(AP_Notify,            &copter.notify,              update,          50,  90),
     SCHED_TASK(one_hz_loop,            1,    100),
     SCHED_TASK(ekf_check,             10,     75),
@@ -131,11 +141,13 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
     SCHED_TASK_CLASS(AP_Mount,             &copter.camera_mount,        update,          50,  75),
 #endif
 #if CAMERA == ENABLED
-    SCHED_TASK_CLASS(AP_Camera,            &copter.camera,              update,          50,  75),
+    SCHED_TASK_CLASS(AP_Camera,            &copter.camera,              update_trigger,  50,  75),
 #endif
+#if LOGGING_ENABLED == ENABLED
     SCHED_TASK(ten_hz_logging_loop,   10,    350),
     SCHED_TASK(twentyfive_hz_logging, 25,    110),
     SCHED_TASK_CLASS(DataFlash_Class,      &copter.DataFlash,           periodic_tasks, 400, 300),
+#endif
     SCHED_TASK_CLASS(AP_InertialSensor,    &copter.ins,                 periodic,       400,  50),
     SCHED_TASK_CLASS(AP_Scheduler,         &copter.scheduler,           update_logging, 0.1,  75),
     SCHED_TASK(read_receiver_rssi,    10,     75),
@@ -149,7 +161,9 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #if ADVANCED_FAILSAFE == ENABLED
     SCHED_TASK(afs_fs_check,          10,    100),
 #endif
+#if AC_TERRAIN == ENABLED
     SCHED_TASK(terrain_update,        10,    100),
+#endif
 #if GRIPPER_ENABLED == ENABLED
     SCHED_TASK_CLASS(AP_Gripper,           &copter.g2.gripper,          update,          10,  75),
 #endif
@@ -175,7 +189,9 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
     SCHED_TASK(userhook_SuperSlowLoop, 1,   75),
 #endif
     SCHED_TASK_CLASS(AP_Button,            &copter.g2.button,           update,           5, 100),
+#if STATS_ENABLED == ENABLED
     SCHED_TASK_CLASS(AP_Stats,             &copter.g2.stats,            update,           1, 100),
+#endif
 };
 
 
@@ -329,15 +345,21 @@ void Copter::ten_hz_logging_loop()
         DataFlash.Log_Write_RCOUT();
     }
     if (should_log(MASK_LOG_NTUN) && (flightmode->requires_GPS() || landing_with_GPS())) {
-        Log_Write_Nav_Tuning();
+        pos_control->write_log();
     }
     if (should_log(MASK_LOG_IMU) || should_log(MASK_LOG_IMU_FAST) || should_log(MASK_LOG_IMU_RAW)) {
-        DataFlash.Log_Write_Vibration(ins);
+        DataFlash.Log_Write_Vibration();
     }
     if (should_log(MASK_LOG_CTUN)) {
         attitude_control->control_monitor_log();
-        Log_Write_Proximity();
-        Log_Write_Beacon();
+#if PROXIMITY_ENABLED == ENABLED
+        DataFlash.Log_Write_Proximity(g2.proximity);  // Write proximity sensor distances
+#endif
+#if BEACON_ENABLED == ENABLED
+        if (g2.beacon.enabled()) {
+            DataFlash.Log_Write_Beacon(g2.beacon);
+        }
+#endif
     }
 #if FRAME_CONFIG == HELI_FRAME
     Log_Write_Heli();
@@ -359,7 +381,7 @@ void Copter::twentyfive_hz_logging()
 
     // log IMU data if we're not already logging at the higher rate
     if (should_log(MASK_LOG_IMU) && !should_log(MASK_LOG_IMU_RAW)) {
-        DataFlash.Log_Write_IMU(ins);
+        DataFlash.Log_Write_IMU();
     }
 #endif
 

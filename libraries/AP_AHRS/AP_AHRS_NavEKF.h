@@ -44,8 +44,7 @@ public:
     };
 
     // Constructor
-    AP_AHRS_NavEKF(AP_InertialSensor &ins, AP_Baro &baro,
-                   NavEKF2 &_EKF2, NavEKF3 &_EKF3, Flags flags = FLAG_NONE);
+    AP_AHRS_NavEKF(NavEKF2 &_EKF2, NavEKF3 &_EKF3, Flags flags = FLAG_NONE);
 
     /* Do not allow copies */
     AP_AHRS_NavEKF(const AP_AHRS_NavEKF &other) = delete;
@@ -72,7 +71,7 @@ public:
     bool get_position(struct Location &loc) const override;
 
     // get latest altitude estimate above ground level in meters and validity flag
-    bool get_hagl(float &hagl) const;
+    bool get_hagl(float &hagl) const override;
 
     // status reporting of estimated error
     float           get_error_rp() const override;

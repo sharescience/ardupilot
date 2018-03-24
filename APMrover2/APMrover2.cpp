@@ -57,7 +57,7 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK(update_visual_odom,     50,     50),
     SCHED_TASK(update_wheel_encoder,   20,     50),
     SCHED_TASK(update_compass,         10,   2000),
-    SCHED_TASK(update_mission,         10,   1000),
+    SCHED_TASK(update_mission,         50,    500),
     SCHED_TASK(update_logging1,        10,   1000),
     SCHED_TASK(update_logging2,        10,   1000),
     SCHED_TASK(gcs_retry_deferred,     50,   1000),
@@ -87,7 +87,9 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK_CLASS(AP_InertialSensor,   &rover.ins,              periodic,       50,   50),
     SCHED_TASK_CLASS(AP_Scheduler,        &rover.scheduler,        update_logging, 0.1,  75),
     SCHED_TASK_CLASS(AP_Button,           &rover.button,           update,          5,  100),
+#if STATS_ENABLED == ENABLED
     SCHED_TASK(stats_update,            1,    100),
+#endif
     SCHED_TASK(crash_check,            10,   1000),
     SCHED_TASK(cruise_learn_update,    50,     50),
 #if ADVANCED_FAILSAFE == ENABLED
@@ -95,6 +97,7 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
 #endif
 };
 
+#if STATS_ENABLED == ENABLED
 /*
   update AP_Stats
 */
@@ -103,6 +106,7 @@ void Rover::stats_update(void)
     g2.stats.set_flying(motor_active());
     g2.stats.update();
 }
+#endif
 
 /*
   setup is called when the sketch starts
@@ -168,7 +172,7 @@ void Rover::ahrs_update()
     }
 
     if (should_log(MASK_LOG_IMU)) {
-        DataFlash.Log_Write_IMU(ins);
+        DataFlash.Log_Write_IMU();
     }
 }
 
@@ -239,7 +243,7 @@ void Rover::update_logging2(void)
     }
 
     if (should_log(MASK_LOG_IMU)) {
-        DataFlash.Log_Write_Vibration(ins);
+        DataFlash.Log_Write_Vibration();
     }
 }
 

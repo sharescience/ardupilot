@@ -283,7 +283,7 @@ void NavEKF2_core::readMagData()
  */
 void NavEKF2_core::readIMUData()
 {
-    const AP_InertialSensor &ins = _ahrs->get_ins();
+    const AP_InertialSensor &ins = AP::ins();
 
     // average IMU sampling rate
     dtIMUavg = ins.get_loop_delta_t();
@@ -391,7 +391,7 @@ void NavEKF2_core::readIMUData()
 // read the delta velocity and corresponding time interval from the IMU
 // return false if data is not available
 bool NavEKF2_core::readDeltaVelocity(uint8_t ins_index, Vector3f &dVel, float &dVel_dt) {
-    const AP_InertialSensor &ins = _ahrs->get_ins();
+    const AP_InertialSensor &ins = AP::ins();
 
     if (ins_index < ins.get_accel_count()) {
         ins.get_delta_velocity(ins_index,dVel);
@@ -534,7 +534,7 @@ void NavEKF2_core::readGpsData()
 // read the delta angle and corresponding time interval from the IMU
 // return false if data is not available
 bool NavEKF2_core::readDeltaAngle(uint8_t ins_index, Vector3f &dAng, float &dAng_dt) {
-    const AP_InertialSensor &ins = _ahrs->get_ins();
+    const AP_InertialSensor &ins = AP::ins();
 
     if (ins_index < ins.get_gyro_count()) {
         ins.get_delta_angle(ins_index,dAng);
@@ -556,10 +556,11 @@ void NavEKF2_core::readBaroData()
 {
     // check to see if baro measurement has changed so we know if a new measurement has arrived
     // do not accept data at a faster rate than 14Hz to avoid overflowing the FIFO buffer
-    if (frontend->_baro.get_last_update() - lastBaroReceived_ms > 70) {
+    const AP_Baro &baro = AP::baro();
+    if (baro.get_last_update() - lastBaroReceived_ms > 70) {
         frontend->logging.log_baro = true;
 
-        baroDataNew.hgt = frontend->_baro.get_altitude();
+        baroDataNew.hgt = baro.get_altitude();
 
         // If we are in takeoff mode, the height measurement is limited to be no less than the measurement at start of takeoff
         // This prevents negative baro disturbances due to copter downwash corrupting the EKF altitude during initial ascent
@@ -568,7 +569,7 @@ void NavEKF2_core::readBaroData()
         }
 
         // time stamp used to check for new measurement
-        lastBaroReceived_ms = frontend->_baro.get_last_update();
+        lastBaroReceived_ms = baro.get_last_update();
 
         // estimate of time height measurement was taken, allowing for delays
         baroDataNew.time_ms = lastBaroReceived_ms - frontend->_hgtDelay_ms;

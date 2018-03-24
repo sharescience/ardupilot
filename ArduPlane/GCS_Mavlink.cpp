@@ -317,6 +317,26 @@ void NOINLINE Plane::send_rpm(mavlink_channel_t chan)
     }
 }
 
+// sends a single pid info over the provided channel
+void Plane::send_pid_info(const mavlink_channel_t chan, const DataFlash_Class::PID_Info *pid_info,
+                          const uint8_t axis, const float achieved)
+{
+    if (pid_info == nullptr) {
+        return;
+    }
+    if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
+        return;
+    }
+     mavlink_msg_pid_tuning_send(chan, axis,
+                                 pid_info->desired,
+                                 achieved,
+                                 pid_info->FF,
+                                 pid_info->P,
+                                 pid_info->I,
+                                 pid_info->D,
+								 0,0);
+}
+
 /*
   send PID tuning message
  */
@@ -324,94 +344,35 @@ void Plane::send_pid_tuning(mavlink_channel_t chan)
 {
     const Vector3f &gyro = ahrs.get_gyro();
     const DataFlash_Class::PID_Info *pid_info;
-    if (g.gcs_pid_mask & 1) {
+    if (g.gcs_pid_mask & TUNING_BITS_ROLL) {
         if (quadplane.in_vtol_mode()) {
             pid_info = &quadplane.attitude_control->get_rate_roll_pid().get_pid_info();
         } else {
             pid_info = &rollController.get_pid_info();
         }
-        mavlink_msg_pid_tuning_send(chan, PID_TUNING_ROLL, 
-                                    pid_info->desired,
-                                    degrees(gyro.x),
-                                    pid_info->FF,
-                                    pid_info->P,
-                                    pid_info->I,
-                                    pid_info->D,
-									pid_info->PreD,
-									0.0f);
-        if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
-            return;
-        }
+        send_pid_info(chan, pid_info, PID_TUNING_ROLL, degrees(gyro.x));
     }
-    if (g.gcs_pid_mask & 2) {
+    if (g.gcs_pid_mask & TUNING_BITS_PITCH) {
         if (quadplane.in_vtol_mode()) {
             pid_info = &quadplane.attitude_control->get_rate_pitch_pid().get_pid_info();
         } else {
             pid_info = &pitchController.get_pid_info();
         }
-        mavlink_msg_pid_tuning_send(chan, PID_TUNING_PITCH, 
-                                    pid_info->desired,
-                                    degrees(gyro.y),
-                                    pid_info->FF,
-                                    pid_info->P,
-                                    pid_info->I,
-                                    pid_info->D,
-									pid_info->PreD,
-									0.0f);
-        if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
-            return;
-        }
+        send_pid_info(chan, pid_info, PID_TUNING_PITCH, degrees(gyro.y));
     }
-    if (g.gcs_pid_mask & 4) {
+    if (g.gcs_pid_mask & TUNING_BITS_YAW) {
         if (quadplane.in_vtol_mode()) {
             pid_info = &quadplane.attitude_control->get_rate_yaw_pid().get_pid_info();
         } else {
             pid_info = &yawController.get_pid_info();
         }
-        mavlink_msg_pid_tuning_send(chan, PID_TUNING_YAW,
-                                    pid_info->desired,
-                                    degrees(gyro.z),
-                                    pid_info->FF,
-                                    pid_info->P,
-                                    pid_info->I,
-                                    pid_info->D,
-									pid_info->PreD,
-									0.0f);
-        if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
-            return;
-        }
+        send_pid_info(chan, pid_info, PID_TUNING_YAW, degrees(gyro.z));
     }
-    if (g.gcs_pid_mask & 8) {
-        pid_info = &steerController.get_pid_info();
-        mavlink_msg_pid_tuning_send(chan, PID_TUNING_STEER, 
-                                    pid_info->desired,
-                                    degrees(gyro.z),
-                                    pid_info->FF,
-                                    pid_info->P,
-                                    pid_info->I,
-                                    pid_info->D,
-									pid_info->PreD,
-									0.0f);
-        if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
-            return;
-        }
+    if (g.gcs_pid_mask & TUNING_BITS_STEER) {
+        send_pid_info(chan, &steerController.get_pid_info(), PID_TUNING_STEER, degrees(gyro.z));
     }
-    if ((g.gcs_pid_mask & 0x10) && (flight_stage == AP_Vehicle::FixedWing::FLIGHT_LAND)) {
-        pid_info = landing.get_pid_info();
-        if (pid_info != nullptr) {
-            mavlink_msg_pid_tuning_send(chan, PID_TUNING_LANDING,
-                                        pid_info->desired,
-                                        gyro.z,
-                                        pid_info->FF,
-                                        pid_info->P,
-                                        pid_info->I,
-                                        pid_info->D,
-										pid_info->PreD,
-										0.0f);
-        }
-        if (!HAVE_PAYLOAD_SPACE(chan, PID_TUNING)) {
-            return;
-        }
+    if ((g.gcs_pid_mask & TUNING_BITS_LAND) && (flight_stage == AP_Vehicle::FixedWing::FLIGHT_LAND)) {
+        send_pid_info(chan, landing.get_pid_info(), PID_TUNING_LANDING, degrees(gyro.z));
     }
 }
 
@@ -464,11 +425,6 @@ bool GCS_MAVLINK_Plane::try_send_message(enum ap_message id)
         plane.send_location(chan);
         break;
 
-    case MSG_LOCAL_POSITION:
-        CHECK_PAYLOAD_SIZE(LOCAL_POSITION_NED);
-        send_local_position(plane.ahrs);
-        break;
-
     case MSG_NAV_CONTROLLER_OUTPUT:
         if (plane.control_mode != MANUAL) {
             CHECK_PAYLOAD_SIZE(NAV_CONTROLLER_OUTPUT);
@@ -518,12 +474,12 @@ bool GCS_MAVLINK_Plane::try_send_message(enum ap_message id)
 
     case MSG_RAW_IMU2:
         CHECK_PAYLOAD_SIZE(SCALED_PRESSURE);
-        send_scaled_pressure(plane.barometer);
+        send_scaled_pressure();
         break;
 
     case MSG_RAW_IMU3:
         CHECK_PAYLOAD_SIZE(SENSOR_OFFSETS);
-        send_sensor_offsets(plane.ins, plane.compass, plane.barometer);
+        send_sensor_offsets(plane.ins, plane.compass);
         break;
 
     case MSG_FENCE_STATUS:
@@ -533,16 +489,11 @@ bool GCS_MAVLINK_Plane::try_send_message(enum ap_message id)
 #endif
         break;
 
-    case MSG_AHRS:
-        CHECK_PAYLOAD_SIZE(AHRS);
-        send_ahrs(plane.ahrs);
-        break;
-
     case MSG_SIMSTATE:
         CHECK_PAYLOAD_SIZE(SIMSTATE);
         plane.send_simstate(chan);
         CHECK_PAYLOAD_SIZE2(AHRS2);
-        send_ahrs2(plane.ahrs);
+        send_ahrs2();
         break;
 
     case MSG_RANGEFINDER:
@@ -580,7 +531,7 @@ bool GCS_MAVLINK_Plane::try_send_message(enum ap_message id)
 #if OPTFLOW == ENABLED
         if (plane.optflow.enabled()) {        
             CHECK_PAYLOAD_SIZE(OPTICAL_FLOW);
-            send_opticalflow(plane.ahrs, plane.optflow);
+            send_opticalflow(plane.optflow);
         }
 #endif
         break;
@@ -953,14 +904,14 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
                 new_home_loc.alt = packet.z * 100;
                 // handle relative altitude
                 if (packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT || packet.frame == MAV_FRAME_GLOBAL_RELATIVE_ALT_INT) {
-                    if (plane.home_is_set == HOME_UNSET) {
+                    if (!AP::ahrs().home_is_set()) {
                         // cannot use relative altitude if home is not set
                         break;
                     }
                     new_home_loc.alt += plane.ahrs.get_home().alt;
                 }
                 plane.ahrs.set_home(new_home_loc);
-                plane.home_is_set = HOME_SET_NOT_LOCKED;
+                AP::ahrs().set_home_status(HOME_SET_NOT_LOCKED);
                 plane.Log_Write_Home_And_Origin();
                 gcs().send_home(new_home_loc);
                 result = MAV_RESULT_ACCEPTED;
@@ -1250,19 +1201,6 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
             }
             break;
 
-        case MAV_CMD_GET_HOME_POSITION:
-            if (plane.home_is_set != HOME_UNSET) {
-                send_home(plane.ahrs.get_home());
-                Location ekf_origin;
-                if (plane.ahrs.get_origin(ekf_origin)) {
-                    send_ekf_origin(ekf_origin);
-                }
-                result = MAV_RESULT_ACCEPTED;
-            } else {
-                result = MAV_RESULT_FAILED;
-            }
-            break;
-
         case MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN:
             result = handle_preflight_reboot(packet, plane.quadplane.enable != 0);
             break;
@@ -1357,7 +1295,7 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
                 new_home_loc.lng = (int32_t)(packet.param6 * 1.0e7f);
                 new_home_loc.alt = (int32_t)(packet.param7 * 100.0f);
                 plane.ahrs.set_home(new_home_loc);
-                plane.home_is_set = HOME_SET_NOT_LOCKED;
+                AP::ahrs().set_home_status(HOME_SET_NOT_LOCKED);
                 plane.Log_Write_Home_And_Origin();
                 gcs().send_home(new_home_loc);
                 result = MAV_RESULT_ACCEPTED;
@@ -1439,6 +1377,31 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
             }
             break;
             
+#if GRIPPER_ENABLED == ENABLED
+        case MAV_CMD_DO_GRIPPER:
+            // param1 : gripper number (ignored)
+            // param2 : action (0=release, 1=grab). See GRIPPER_ACTIONS enum.
+            if(!plane.g2.gripper.enabled()) {
+                result = MAV_RESULT_FAILED;
+            } else {
+                result = MAV_RESULT_ACCEPTED;
+                switch ((uint8_t)packet.param2) {
+                    case GRIPPER_ACTION_RELEASE:
+                        plane.g2.gripper.release();
+                        gcs().send_text(MAV_SEVERITY_INFO, "Gripper Released");
+                        break;
+                    case GRIPPER_ACTION_GRAB:
+                        plane.g2.gripper.grab();
+                        gcs().send_text(MAV_SEVERITY_INFO, "Gripper Grabbed");
+                        break;
+                    default:
+                        result = MAV_RESULT_FAILED;
+                        break;
+                }
+            }
+            break;
+#endif
+
         default:
             result = handle_command_long_message(packet);
             break;
@@ -1748,7 +1711,7 @@ void GCS_MAVLINK_Plane::handleMessage(mavlink_message_t* msg)
         new_home_loc.lng = packet.longitude;
         new_home_loc.alt = packet.altitude / 10;
         plane.ahrs.set_home(new_home_loc);
-        plane.home_is_set = HOME_SET_NOT_LOCKED;
+        plane.ahrs.set_home_status(HOME_SET_NOT_LOCKED);
         plane.Log_Write_Home_And_Origin();
         gcs().send_home(new_home_loc);
         gcs().send_text(MAV_SEVERITY_INFO, "Set HOME to %.6f %.6f at %um",

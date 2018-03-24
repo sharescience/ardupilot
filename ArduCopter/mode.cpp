@@ -38,9 +38,11 @@ Copter::Mode *Copter::mode_from_mode_num(const uint8_t mode)
     Copter::Mode *ret = nullptr;
 
     switch (mode) {
+#if MODE_ACRO_ENABLED == ENABLED
         case ACRO:
             ret = &mode_acro;
             break;
+#endif
 
         case STABILIZE:
             ret = &mode_stabilize;
@@ -50,37 +52,51 @@ Copter::Mode *Copter::mode_from_mode_num(const uint8_t mode)
             ret = &mode_althold;
             break;
 
+#if MODE_AUTO_ENABLED == ENABLED
         case AUTO:
             ret = &mode_auto;
             break;
+#endif
 
+#if MODE_CIRCLE_ENABLED == ENABLED
         case CIRCLE:
             ret = &mode_circle;
             break;
+#endif
 
+#if MODE_LOITER_ENABLED == ENABLED
         case LOITER:
             ret = &mode_loiter;
             break;
+#endif
 
+#if MODE_GUIDED_ENABLED == ENABLED
         case GUIDED:
             ret = &mode_guided;
             break;
+#endif
 
         case LAND:
             ret = &mode_land;
             break;
 
+#if MODE_RTL_ENABLED == ENABLED
         case RTL:
             ret = &mode_rtl;
             break;
+#endif
 
+#if MODE_DRIFT_ENABLED == ENABLED
         case DRIFT:
             ret = &mode_drift;
             break;
+#endif
 
+#if MODE_SPORT_ENABLED == ENABLED
         case SPORT:
             ret = &mode_sport;
             break;
+#endif
 
         case FLIP:
             ret = &mode_flip;
@@ -92,17 +108,23 @@ Copter::Mode *Copter::mode_from_mode_num(const uint8_t mode)
             break;
 #endif
 
+#if MODE_POSHOLD_ENABLED == ENABLED
         case POSHOLD:
             ret = &mode_poshold;
             break;
+#endif
 
+#if MODE_BRAKE_ENABLED == ENABLED
         case BRAKE:
             ret = &mode_brake;
             break;
+#endif
 
+#if MODE_THROW_ENABLED == ENABLED
         case THROW:
             ret = &mode_throw;
             break;
+#endif
 
 #if ADSB_ENABLED == ENABLED
         case AVOID_ADSB:
@@ -110,20 +132,30 @@ Copter::Mode *Copter::mode_from_mode_num(const uint8_t mode)
             break;
 #endif
 
+#if MODE_GUIDED_NOGPS_ENABLED == ENABLED
         case GUIDED_NOGPS:
             ret = &mode_guided_nogps;
             break;
+#endif
 
+#if MODE_SMARTRTL_ENABLED == ENABLED
         case SMART_RTL:
             ret = &mode_smartrtl;
             break;
+#endif
 
 #if OPTFLOW == ENABLED
         case FLOWHOLD:
             ret = (Copter::Mode *)g2.mode_flowhold_ptr;
             break;
 #endif
-            
+
+#if MODE_FOLLOW_ENABLED == ENABLED
+        case FOLLOW:
+            ret = &mode_follow;
+            break;
+#endif
+
         default:
             break;
     }
@@ -225,6 +257,7 @@ void Copter::exit_mode(Copter::Mode *&old_flightmode,
 #endif
 
     // stop mission when we leave auto mode
+#if MODE_AUTO_ENABLED == ENABLED
     if (old_flightmode == &mode_auto) {
         if (mission.state() == AP_Mission::MISSION_RUNNING) {
             mission.stop();
@@ -233,6 +266,7 @@ void Copter::exit_mode(Copter::Mode *&old_flightmode,
         camera_mount.set_mode_to_default();
 #endif  // MOUNT == ENABLED
     }
+#endif
 
     // smooth throttle transition when switching from manual to automatic flight modes
     if (old_flightmode->has_manual_throttle() && !new_flightmode->has_manual_throttle() && motors->armed() && !ap.land_complete) {
@@ -243,10 +277,12 @@ void Copter::exit_mode(Copter::Mode *&old_flightmode,
     // cancel any takeoffs in progress
     takeoff_stop();
 
+#if MODE_SMARTRTL_ENABLED == ENABLED
     // call smart_rtl cleanup
     if (old_flightmode == &mode_smartrtl) {
         mode_smartrtl.exit();
     }
+#endif
 
 #if FRAME_CONFIG == HELI_FRAME
     // firmly reset the flybar passthrough to false when exiting acro mode.
@@ -281,6 +317,36 @@ void Copter::Mode::update_navigation()
     run_autopilot();
 }
 
+// get_pilot_desired_angle - transform pilot's roll or pitch input into a desired lean angle
+// returns desired angle in centi-degrees
+void Copter::Mode::get_pilot_desired_lean_angles(float &roll_out, float &pitch_out, float angle_max, float angle_limit) const
+{
+    // fetch roll and pitch inputs
+    roll_out = channel_roll->get_control_in();
+    pitch_out = channel_pitch->get_control_in();
+
+	// limit max lean angle
+    angle_limit = constrain_float(angle_limit, 1000.0f, angle_max);
+
+    // scale roll and pitch inputs to ANGLE_MAX parameter range
+    float scaler = angle_max/(float)ROLL_PITCH_YAW_INPUT_MAX;
+    roll_out *= scaler;
+    pitch_out *= scaler;
+
+    // do circular limit
+    float total_in = norm(pitch_out, roll_out);
+    if (total_in > angle_limit) {
+        float ratio = angle_limit / total_in;
+        roll_out *= ratio;
+        pitch_out *= ratio;
+    }
+
+    // do lateral tilt to euler roll conversion
+    roll_out = (18000/M_PI) * atanf(cosf(pitch_out*(M_PI/18000))*tanf(roll_out*(M_PI/18000)));
+
+    // roll_out and pitch_out are returned
+}
+
 bool Copter::Mode::takeoff_triggered(const float target_climb_rate) const
 {
     if (!ap.land_complete) {
@@ -304,7 +370,7 @@ void Copter::Mode::zero_throttle_and_relax_ac()
 {
 #if FRAME_CONFIG == HELI_FRAME
     // Helicopters always stabilize roll/pitch/yaw
-    attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f, get_smoothing_gain());
+    attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f);
     attitude_control->set_throttle_out(0.0f, false, copter.g.throttle_filt);
 #else
     motors->set_desired_spool_state(AP_Motors::DESIRED_SPIN_WHEN_ARMED);
@@ -313,14 +379,9 @@ void Copter::Mode::zero_throttle_and_relax_ac()
 #endif
 }
 
-
 // pass-through functions to reduce code churn on conversion;
 // these are candidates for moving into the Mode base
 // class.
-void Copter::Mode::get_pilot_desired_lean_angles(float roll_in, float pitch_in, float &roll_out, float &pitch_out, float angle_max)
-{
-    copter.get_pilot_desired_lean_angles(roll_in, pitch_in, roll_out, pitch_out, angle_max);
-}
 
 float Copter::Mode::get_surface_tracking_climb_rate(int16_t target_rate, float current_alt_target, float dt)
 {
@@ -349,10 +410,6 @@ float Copter::Mode::get_non_takeoff_throttle()
 
 void Copter::Mode::update_simple_mode(void) {
     copter.update_simple_mode();
-}
-
-float Copter::Mode::get_smoothing_gain() {
-    return copter.get_smoothing_gain();
 }
 
 bool Copter::Mode::set_mode(control_mode_t mode, mode_reason_t reason)
