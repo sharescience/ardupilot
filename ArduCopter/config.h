@@ -131,14 +131,6 @@
 //////////////////////////////////////////////////////////////////////////////
 // Battery monitoring
 //
-#ifndef FS_BATT_VOLTAGE_DEFAULT
- # define FS_BATT_VOLTAGE_DEFAULT       10.5f       // default battery voltage below which failsafe will be triggered
-#endif
-
-#ifndef FS_BATT_MAH_DEFAULT
- # define FS_BATT_MAH_DEFAULT             0         // default battery capacity (in mah) below which failsafe will be triggered
-#endif
-
 #ifndef BOARD_VOLTAGE_MIN
  # define BOARD_VOLTAGE_MIN             4.3f        // min board voltage in volts for pre-arm checks
 #endif
@@ -250,6 +242,12 @@
 #endif
 
 //////////////////////////////////////////////////////////////////////////////
+// rotations per minute sensor support
+#ifndef RPM_ENABLED
+# define RPM_ENABLED ENABLED
+#endif
+
+//////////////////////////////////////////////////////////////////////////////
 // Parachute release
 #ifndef PARACHUTE
  # define PARACHUTE ENABLED
@@ -342,7 +340,7 @@
 //////////////////////////////////////////////////////////////////////////////
 // Sport - fly vehicle in rate-controlled (earth-frame) mode
 #ifndef MODE_SPORT_ENABLED
-# define MODE_SPORT_ENABLED ENABLED
+# define MODE_SPORT_ENABLED !HAL_MINIMIZE_FEATURES
 #endif
 
 //////////////////////////////////////////////////////////////////////////////

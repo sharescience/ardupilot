@@ -124,7 +124,7 @@ const AP_Param::Info Rover::var_info[] = {
     // @Range: 0 360
     // @Increment: 1
     // @User: Standard
-    GSCALAR(pivot_turn_angle,   "PIVOT_TURN_ANGLE",  30),
+    GSCALAR(pivot_turn_angle,   "PIVOT_TURN_ANGLE",  60),
 
     // @Param: CH7_OPTION
     // @DisplayName: Channel 7 option
@@ -303,8 +303,8 @@ const AP_Param::Info Rover::var_info[] = {
     // @DisplayName: Turning maximum G force
     // @Description: The maximum turning acceleration (in units of gravities) that the rover can handle while remaining stable. The navigation code will keep the lateral acceleration below this level to avoid rolling over or slipping the wheels in turns
     // @Units: gravities
-    // @Range: 0.2 10
-    // @Increment: 0.1
+    // @Range: 0.1 10
+    // @Increment: 0.01
     // @User: Standard
     GSCALAR(turn_max_g,             "TURN_MAX_G",      1.0f),
 
@@ -567,7 +567,7 @@ ParametersG2::ParametersG2(void)
     beacon(rover.serial_manager),
     motors(rover.ServoRelayEvents),
     attitude_control(rover.ahrs),
-    smart_rtl(rover.ahrs),
+    smart_rtl(),
     fence(rover.ahrs),
     proximity(rover.serial_manager),
     avoid(rover.ahrs, fence, rover.g2.proximity, &rover.g2.beacon)

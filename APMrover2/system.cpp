@@ -103,13 +103,12 @@ void Rover::init_ardupilot()
     init_visual_odom();
 
     // and baro for EKF
-    init_barometer(true);
+    barometer.set_log_baro_bit(MASK_LOG_IMU);
+    barometer.calibrate();
 
     // Do GPS init
     gps.set_log_gps_bit(MASK_LOG_GPS);
     gps.init(serial_manager);
-
-    rc_override_active = hal.rcin->set_overrides(rc_override, 8);
 
     ins.set_log_raw_bit(MASK_LOG_IMU_RAW);
 

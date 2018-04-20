@@ -69,23 +69,6 @@ void Copter::set_failsafe_radio(bool b)
     }
 }
 
-
-// ---------------------------------------------
-void Copter::set_failsafe_battery(bool b)
-{
-	if(failsafe.battery != b){
-        failsafe.battery = b;
-
-        if(failsafe.battery == false){
-        	event_manager.event_update(EM_FAILSAFE_BATTERY, EM_EVENT_OFF);
-        }else{
-        	event_manager.event_update(EM_FAILSAFE_BATTERY, EM_EVENT_ON);
-        }
-
-        AP_Notify::flags.failsafe_battery = b;
-	}
-}
-
 // ---------------------------------------------
 void Copter::set_failsafe_gcs(bool b)
 {

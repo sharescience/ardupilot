@@ -309,17 +309,6 @@ private:
     // This is used to enable the PX4IO override for testing
     bool px4io_override_enabled;
 
-    struct {
-        // These are trim values used for elevon control
-        // For elevons radio_in[CH_ROLL] and radio_in[CH_PITCH] are
-        // equivalent aileron and elevator, not left and right elevon
-        uint16_t trim1;
-        uint16_t trim2;
-        // These are used in the calculation of elevon1_trim and elevon2_trim
-        uint16_t ch1_temp;
-        uint16_t ch2_temp;
-    } elevon { 1500, 1500, 1500, 1500 };
-
     // Failsafe
     struct {
         // Used to track if the value on channel 3 (throtttle) has fallen below the failsafe threshold
@@ -328,9 +317,6 @@ private:
 
         // has the saved mode for failsafe been set?
         bool saved_mode_set:1;
-
-        // flag to hold whether battery low voltage threshold has been breached
-        bool low_battery:1;
 
         // true if an adsb related failsafe has occurred
         bool adsb:1;
@@ -357,6 +343,10 @@ private:
         //Does not count rc inputs as valid if the standard failsafe is on
         uint32_t AFS_last_valid_rc_ms;
     } failsafe;
+
+    bool any_failsafe_triggered() {
+        return failsafe.state != FAILSAFE_NONE || battery.has_failsafed() || failsafe.adsb;
+    }
 
     // A counter used to count down valid gps fixes to allow the gps estimate to settle
     // before recording our home position (and executing a ground start if we booted with an air start)
@@ -392,7 +382,9 @@ private:
     int32_t altitude_error_cm;
 
     // Battery Sensors
-    AP_BattMonitor battery{MASK_LOG_CURRENT};
+    AP_BattMonitor battery{MASK_LOG_CURRENT,
+                           FUNCTOR_BIND_MEMBER(&Plane::handle_battery_failsafe, void, const char*, const int8_t),
+                           _failsafe_priorities};
 
 #if FRSKY_TELEM_ENABLED == ENABLED
     // FrSky telemetry support
@@ -777,7 +769,6 @@ private:
     
     void adjust_nav_pitch_throttle(void);
     void update_load_factor(void);
-    void send_heartbeat(mavlink_channel_t chan);
     void send_attitude(mavlink_channel_t chan);
     void send_fence_status(mavlink_channel_t chan);
     void update_sensor_status_flags(void);
@@ -810,10 +801,8 @@ private:
     void Log_Write_Sonar();
     void Log_Write_Optflow();
     void Log_Arm_Disarm();
-    void Log_Write_GPS(uint8_t instance);
     void Log_Write_IMU();
     void Log_Write_RC(void);
-    void Log_Write_Baro(void);
     void Log_Write_Airspeed(void);
     void Log_Write_Home_And_Origin();
     void Log_Write_Vehicle_Startup_Messages();
@@ -879,7 +868,7 @@ private:
     void failsafe_long_on_event(enum failsafe_state fstype, mode_reason_t reason);
     void failsafe_short_off_event(mode_reason_t reason);
     void failsafe_long_off_event(mode_reason_t reason);
-    void low_battery_event(void);
+    void handle_battery_failsafe(const char* type_str, const int8_t action);
     void update_events(void);
     uint8_t max_fencepoints(void);
     Vector2l get_fence_point_with_index(unsigned i);
@@ -927,12 +916,9 @@ private:
     void trim_control_surfaces();
     void trim_radio();
     bool rc_failsafe_active(void);
-    void init_barometer(bool full_calibration);
     void init_rangefinder(void);
     void read_rangefinder(void);
     void read_airspeed(void);
-    void zero_airspeed(bool in_startup);
-    void read_battery(void);
     void read_receiver_rssi(void);
     void rpm_update(void);
     void button_update(void);
@@ -1064,6 +1050,24 @@ private:
     // support for AP_Avoidance custom flight mode, AVOID_ADSB
     bool avoid_adsb_init(bool ignore_checks);
     void avoid_adsb_run();
+
+    enum Failsafe_Action {
+        Failsafe_Action_None      = 0,
+        Failsafe_Action_RTL       = 1,
+        Failsafe_Action_Land      = 2,
+        Failsafe_Action_Terminate = 3
+    };
+
+    // list of priorities, highest priority first
+    static constexpr int8_t _failsafe_priorities[] = {
+                                                      Failsafe_Action_Terminate,
+                                                      Failsafe_Action_Land,
+                                                      Failsafe_Action_RTL,
+                                                      Failsafe_Action_None,
+                                                      -1 // the priority list must end with a sentinel of -1
+                                                     };
+    static_assert(_failsafe_priorities[ARRAY_SIZE(_failsafe_priorities) - 1] == -1,
+                  "_failsafe_priorities is missing the sentinel");
 
 public:
     void mavlink_delay_cb();

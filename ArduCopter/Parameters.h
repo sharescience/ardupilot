@@ -108,7 +108,7 @@ public:
         k_param_angle_max,
         k_param_gps_hdop_good,
         k_param_battery,
-        k_param_fs_batt_mah,
+        k_param_fs_batt_mah,            // unused - moved to AP_BattMonitor
         k_param_angle_rate_max,         // remove
         k_param_rssi_range,             // unused, replaced by rssi_ library parameters
         k_param_rc_feel_rp,             // deprecated
@@ -196,7 +196,8 @@ public:
         k_param_wp_nav,
         k_param_attitude_control,
         k_param_pos_control,
-        k_param_circle_nav,     // 104
+        k_param_circle_nav,
+        k_param_loiter_nav,     // 105
 
 		//
 		// 105: AP_EventManager Library
@@ -244,7 +245,7 @@ public:
         k_param_rangefinder_enabled_old, // deprecated
         k_param_frame_type,
         k_param_optflow_enabled,    // deprecated
-        k_param_fs_batt_voltage,
+        k_param_fs_batt_voltage,    // unused - moved to AP_BattMonitor
         k_param_ch7_option,
         k_param_auto_slew_rate,     // deprecated - can be deleted
         k_param_rangefinder_type_old,     // deprecated
@@ -300,7 +301,7 @@ public:
         k_param_radio_tuning_high,
         k_param_radio_tuning_low,
         k_param_rc_speed = 192,
-        k_param_failsafe_battery_enabled,
+        k_param_failsafe_battery_enabled, // unused - moved to AP_BattMonitor
         k_param_throttle_mid,           // remove
         k_param_failsafe_gps_enabled,   // remove
         k_param_rc_9_old,
@@ -398,10 +399,6 @@ public:
 #if RANGEFINDER_ENABLED == ENABLED
     AP_Float        rangefinder_gain;
 #endif
-
-    AP_Int8         failsafe_battery_enabled;   // battery failsafe enabled
-    AP_Float        fs_batt_voltage;            // battery voltage below which failsafe will be triggered
-    AP_Float        fs_batt_mah;                // battery capacity (in mah) below which failsafe will be triggered
 
     AP_Int8         failsafe_gcs;               // ground station failsafe behavior
     AP_Int16        gps_hdop_good;              // GPS Hdop value at or below this value represent a good position
@@ -529,6 +526,9 @@ public:
     // ground effect compensation enable/disable
     AP_Int8 gndeffect_comp_enabled;
 
+    // temperature calibration handling
+    AP_TempCalibration temp_calibration;
+
 #if BEACON_ENABLED == ENABLED
     // beacon (non-GPS positioning) library
     AP_Beacon beacon;
@@ -586,9 +586,6 @@ public:
 
     // Land alt final stage
     AP_Int16 land_alt_low;
-
-    // temperature calibration handling
-    AP_TempCalibration temp_calibration;
 
 #if TOY_MODE_ENABLED == ENABLED
     ToyMode toy_mode;

@@ -52,7 +52,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(gcs_update,             50,    500),
     SCHED_TASK(gcs_data_stream_send,   50,    500),
     SCHED_TASK(update_events,          50,    150),
-    SCHED_TASK(read_battery,           10,    300),
+    SCHED_TASK_CLASS(AP_BattMonitor, &plane.battery, read, 10, 300),
     SCHED_TASK(compass_accumulate,     50,    200),
     SCHED_TASK(barometer_accumulate,   50,    150),
     SCHED_TASK(update_notify,          50,    300),
@@ -90,6 +90,8 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK_CLASS(AP_Gripper, &plane.g2.gripper, update, 10, 75),
 #endif
 };
+
+constexpr int8_t Plane::_failsafe_priorities[5];
 
 #if STATS_ENABLED == ENABLED
 /*
@@ -410,17 +412,7 @@ void Plane::update_GPS_50Hz(void)
     ahrs.get_relative_position_D_home(relative_altitude);
     relative_altitude *= -1.0f;
 
-    static uint32_t last_gps_reading[GPS_MAX_INSTANCES];
     gps.update();
-
-    for (uint8_t i=0; i<gps.num_sensors(); i++) {
-        if (gps.last_message_time_ms(i) != last_gps_reading[i]) {
-            last_gps_reading[i] = gps.last_message_time_ms(i);
-            if (should_log(MASK_LOG_GPS)) {
-                Log_Write_GPS(i);
-            }
-        }
-    }
 }
 
 /*
@@ -647,7 +639,7 @@ void Plane::update_flight_mode(void)
         }
         if (g.fbwa_tdrag_chan > 0) {
             // check for the user enabling FBWA taildrag takeoff mode
-            bool tdrag_mode = (hal.rcin->read(g.fbwa_tdrag_chan-1) > 1700);
+            bool tdrag_mode = (RC_Channels::get_radio_in(g.fbwa_tdrag_chan-1) > 1700);
             if (tdrag_mode && !auto_state.fbwa_tdrag_takeoff_mode) {
                 if (auto_state.highest_airspeed < g.takeoff_tdrag_speed1) {
                     auto_state.fbwa_tdrag_takeoff_mode = true;
@@ -859,9 +851,6 @@ void Plane::set_flight_stage(AP_Vehicle::FixedWing::FlightStage fs)
 void Plane::update_alt()
 {
     barometer.update();
-    if (should_log(MASK_LOG_IMU)) {
-        Log_Write_Baro();
-    }
 
     // calculate the sink rate.
     float sink_rate;

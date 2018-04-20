@@ -12,8 +12,14 @@
 
 #define MAVLINK_SEND_UART_BYTES(chan, buf, len) comm_send_buffer(chan, buf, len)
 
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+// allow extra mavlink channels in SITL for:
+//    Vicon
+#define MAVLINK_COMM_NUM_BUFFERS 6
+#else
 // allow five telemetry ports
 #define MAVLINK_COMM_NUM_BUFFERS 5
+#endif
 
 /*
   The MAVLink protocol code generator does its own alignment, so
@@ -30,6 +36,7 @@
 
 /// MAVLink stream used for uartA
 extern AP_HAL::UARTDriver	*mavlink_comm_port[MAVLINK_COMM_NUM_BUFFERS];
+extern bool gcs_alternative_active[MAVLINK_COMM_NUM_BUFFERS];
 
 /// MAVLink system definition
 extern mavlink_system_t mavlink_system;

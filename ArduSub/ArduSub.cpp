@@ -80,6 +80,7 @@ const AP_Scheduler::Task Sub::scheduler_tasks[] = {
 #endif
 };
 
+constexpr int8_t Sub::_failsafe_priorities[5];
 
 void Sub::setup()
 {
@@ -166,7 +167,7 @@ void Sub::fifty_hz_loop()
 void Sub::update_batt_compass(void)
 {
     // read battery before compass because it may be used for motor interference compensation
-    read_battery();
+    battery.read();
 
     if (g.compass_enabled) {
         // update compass with throttle value - used for compassmot
@@ -302,13 +303,8 @@ void Sub::update_GPS(void)
     for (uint8_t i=0; i<gps.num_sensors(); i++) {
         if (gps.last_message_time_ms(i) != last_gps_reading[i]) {
             last_gps_reading[i] = gps.last_message_time_ms(i);
-
-            // log GPS message
-            if (should_log(MASK_LOG_GPS) && !ahrs.have_ekf_logging()) {
-                DataFlash.Log_Write_GPS(gps, i);
-            }
-
             gps_updated = true;
+            break;
         }
     }
 
@@ -341,6 +337,18 @@ void Sub::update_altitude()
     if (should_log(MASK_LOG_CTUN)) {
         Log_Write_Control_Tuning();
     }
+}
+
+bool Sub::control_check_barometer()
+{
+    if (!ap.depth_sensor_present) { // can't hold depth without a depth sensor
+        gcs().send_text(MAV_SEVERITY_WARNING, "Depth sensor is not connected.");
+        return false;
+    } else if (failsafe.sensor_health) {
+        gcs().send_text(MAV_SEVERITY_WARNING, "Depth sensor error.");
+        return false;
+    }
+    return true;
 }
 
 AP_HAL_MAIN_CALLBACKS(&sub);

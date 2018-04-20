@@ -22,7 +22,6 @@
 
 #define CHIBIOS_SCHEDULER_MAX_TIMER_PROCS 8
 
-#define APM_MAIN_PRIORITY_BOOST 180 // same as normal for now
 #define APM_MAIN_PRIORITY       180
 #define APM_TIMER_PRIORITY      178
 #define APM_RCIN_PRIORITY       177
@@ -30,11 +29,23 @@
 #define APM_UART_PRIORITY        60
 #define APM_STORAGE_PRIORITY     59
 #define APM_IO_PRIORITY          58
-#define APM_SHELL_PRIORITY       57
 #define APM_STARTUP_PRIORITY     10
 
+/*
+  boost priority handling
+ */
+#ifndef APM_MAIN_PRIORITY_BOOST
+#define APM_MAIN_PRIORITY_BOOST 182
+#endif
+
+#ifndef APM_MAIN_PRIORITY_BOOST_USEC
+#define APM_MAIN_PRIORITY_BOOST_USEC 200
+#endif
+
 #ifndef APM_SPI_PRIORITY
-#define APM_SPI_PRIORITY        179
+// SPI priority needs to be above main priority to ensure fast sampling of IMUs can keep up
+// with the data rate
+#define APM_SPI_PRIORITY        181
 #endif
 
 #ifndef APM_UAVCAN_PRIORITY
@@ -75,6 +86,18 @@ public:
     void     hal_initialized() { _hal_initialized = true; }
 
     bool     check_called_boost(void);
+
+    /*
+      disable interrupts and return a context that can be used to
+      restore the interrupt state. This can be used to protect
+      critical regions
+     */
+    void *disable_interrupts_save(void) override;
+
+    /*
+      restore interrupt state from disable_interrupts_save()
+     */
+    void restore_interrupts(void *) override;
     
 private:
     bool _initialized;
@@ -96,6 +119,7 @@ private:
 
     volatile bool _timer_event_missed;
 
+    virtual_timer_t _boost_timer;
     thread_t* _timer_thread_ctx;
     thread_t* _rcin_thread_ctx;
     thread_t* _io_thread_ctx;

@@ -155,6 +155,16 @@ is bob we will attempt to checkout bob-AVR'''
         except IOError as e:
             if e.errno != 2:
                 raise
+
+        # see if there's a hwdef.dat for this board:
+        if os.path.exists(os.path.join(self.basedir,
+                                       'libraries',
+                                       'AP_HAL_ChibiOS',
+                                       'hwdef',
+                                       board)):
+            self.progress("ChibiOS build: %s" % (board,))
+            return False
+
         self.progress("Skipping unsupported board %s" % (board,))
         return True
 
@@ -352,6 +362,9 @@ is bob we will attempt to checkout bob-AVR'''
                     continue
                 if self.skip_frame(board, frame):
                     continue
+
+                self.remove_tmpdir();
+
                 self.progress("Configuring for %s in %s" %
                               (board, self.buildroot))
                 try:
@@ -477,7 +490,15 @@ is bob we will attempt to checkout bob-AVR'''
     def common_boards(self):
         '''returns list of boards common to all vehicles'''
         # note that while we do not use these for AntennaTracker!
-        return ["erlebrain2", "navio", "navio2", "pxf", "pxfmini"]
+        return ["fmuv2",
+                "fmuv3",
+                "fmuv4",
+                "mindpx-v2",
+                "erlebrain2",
+                "navio",
+                "navio2",
+                "pxf",
+                "pxfmini"]
 
     def build_arducopter(self, tag):
         '''build Copter binaries'''
@@ -573,6 +594,11 @@ is bob we will attempt to checkout bob-AVR'''
                 self.progress("%s: %s=%s" % (filepath, name, value))
                 os.environ[name] = value
 
+    def remove_tmpdir(self):
+        if os.path.exists(self.tmpdir):
+            self.progress("Removing (%s)" % (self.tmpdir,))
+            shutil.rmtree(self.tmpdir)
+
     def run(self):
         self.validate()
 
@@ -585,9 +611,7 @@ is bob we will attempt to checkout bob-AVR'''
         os.environ["TMPDIR"] = self.tmpdir
 
         print(self.tmpdir)
-        if os.path.exists(self.tmpdir):
-            self.progress("Removing (%s)" % (self.tmpdir,))
-            shutil.rmtree(self.tmpdir)
+        self.remove_tmpdir();
 
         self.progress("Building in %s" % self.tmpdir)
 

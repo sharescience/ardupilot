@@ -179,29 +179,6 @@ const AP_Param::Info Copter::var_info[] = {
     GSCALAR(rangefinder_gain, "RNGFND_GAIN", RANGEFINDER_GAIN_DEFAULT),
 #endif
 
-    // @Param: FS_BATT_ENABLE
-    // @DisplayName: Battery Failsafe Enable
-    // @Description: Controls whether failsafe will be invoked when battery voltage or current runs low
-    // @Values: 0:Disabled,1:Land,2:RTL,3:SmartRTL or RTL,4:SmartRTL or Land
-    // @User: Standard
-    GSCALAR(failsafe_battery_enabled, "FS_BATT_ENABLE", FS_BATT_DISABLED),
-
-    // @Param: FS_BATT_VOLTAGE
-    // @DisplayName: Failsafe battery voltage
-    // @Description: Battery voltage to trigger failsafe. Set to 0 to disable battery voltage failsafe. If the battery voltage drops below this voltage then the copter will RTL
-    // @Units: V
-    // @Increment: 0.1
-    // @User: Standard
-    GSCALAR(fs_batt_voltage,        "FS_BATT_VOLTAGE", FS_BATT_VOLTAGE_DEFAULT),
-
-    // @Param: FS_BATT_MAH
-    // @DisplayName: Failsafe battery milliAmpHours
-    // @Description: Battery capacity remaining to trigger failsafe. Set to 0 to disable battery remaining failsafe. If the battery remaining drops below this level then the copter will RTL
-    // @Units: mA.h
-    // @Increment: 50
-    // @User: Standard
-    GSCALAR(fs_batt_mah,            "FS_BATT_MAH", FS_BATT_MAH_DEFAULT),
-
     // @Param: FS_GCS_ENABLE
     // @DisplayName: Ground Station Failsafe Enable
     // @Description: Controls whether failsafe will be invoked (and what action to take) when connection with Ground station is lost for at least 5 seconds. NB. The GCS Failsafe is only active when RC_OVERRIDE is being used to control the vehicle.
@@ -601,6 +578,10 @@ const AP_Param::Info Copter::var_info[] = {
     // @Path: ../libraries/AC_WPNav/AC_WPNav.cpp
     GOBJECTPTR(wp_nav, "WPNAV_",       AC_WPNav),
 
+    // @Group: LOIT_
+    // @Path: ../libraries/AC_WPNav/AC_Loiter.cpp
+    GOBJECTPTR(loiter_nav, "LOIT_", AC_Loiter),
+
 #if MODE_CIRCLE_ENABLED == ENABLED
     // @Group: CIRCLE_
     // @Path: ../libraries/AC_WPNav/AC_Circle.cpp
@@ -766,9 +747,11 @@ const AP_Param::Info Copter::var_info[] = {
     GOBJECT(precland, "PLND_", AC_PrecLand),
 #endif
 
+#if RPM_ENABLED == ENABLED
     // @Group: RPM
     // @Path: ../libraries/AP_RPM/AP_RPM.cpp
     GOBJECT(rpm_sensor, "RPM", AP_RPM),
+#endif
 
 #if ADSB_ENABLED == ENABLED
     // @Group: ADSB_
@@ -862,7 +845,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Description: Used by THROW mode. Specifies whether Copter is thrown upward or dropped.
     // @Values: 0:Upward Throw,1:Drop
     // @User: Standard
-    AP_GROUPINFO("THROW_TYPE", 4, ParametersG2, throw_type, ThrowType_Upward),
+    AP_GROUPINFO("THROW_TYPE", 4, ParametersG2, throw_type, Copter::ModeThrow::ThrowType_Upward),
 #endif
 
     // @Param: GND_EFFECT_COMP
@@ -936,7 +919,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Param: FRAME_CLASS
     // @DisplayName: Frame Class
     // @Description: Controls major frame class for multicopter component
-    // @Values: 0:Undefined, 1:Quad, 2:Hexa, 3:Octa, 4:OctaQuad, 5:Y6, 6:Heli, 7:Tri, 8:SingleCopter, 9:CoaxCopter, 11:Heli_Dual, 12:DodecaHexa
+    // @Values: 0:Undefined, 1:Quad, 2:Hexa, 3:Octa, 4:OctaQuad, 5:Y6, 6:Heli, 7:Tri, 8:SingleCopter, 9:CoaxCopter, 11:Heli_Dual, 12:DodecaHexa, 13:HeliQuad
     // @User: Standard
     // @RebootRequired: True
     AP_GROUPINFO("FRAME_CLASS", 15, ParametersG2, frame_class, 0),
@@ -1027,16 +1010,16 @@ ParametersG2::ParametersG2(void)
     , proximity(copter.serial_manager)
 #endif
 #if ADVANCED_FAILSAFE == ENABLED
-    ,afs(copter.mission, copter.barometer, copter.gps, copter.rcmap)
+    ,afs(copter.mission, copter.gps, copter.rcmap)
 #endif
 #if MODE_SMARTRTL_ENABLED == ENABLED
-    ,smart_rtl(copter.ahrs)
+    ,smart_rtl()
 #endif
 #if !HAL_MINIMIZE_FEATURES && OPTFLOW == ENABLED
     ,mode_flowhold_ptr(&copter.mode_flowhold)
 #endif
 #if MODE_FOLLOW_ENABLED == ENABLED
-    ,follow(copter.ahrs)
+    ,follow()
 #endif
 {
     AP_Param::setup_object_defaults(this, var_info);
@@ -1067,6 +1050,10 @@ const AP_Param::ConversionInfo conversion_table[] = {
     { Parameters::k_param_serial1_baud,       0,      AP_PARAM_INT16, "SERIAL1_BAUD" },
     { Parameters::k_param_serial2_baud,       0,      AP_PARAM_INT16, "SERIAL2_BAUD" },
     { Parameters::k_param_arming_check_old,   0,      AP_PARAM_INT8,  "ARMING_CHECK" },
+    // battery
+    { Parameters::k_param_fs_batt_voltage,    0,      AP_PARAM_INT8,  "BATT_FS_LOW_VOLT" },
+    { Parameters::k_param_fs_batt_mah,        0,      AP_PARAM_INT8,  "BATT_FS_LOW_MAH" },
+    { Parameters::k_param_failsafe_battery_enabled,0, AP_PARAM_INT8,  "BATT_FS_LOW_ACT" },
 };
 
 void Copter::load_parameters(void)
@@ -1157,6 +1144,12 @@ void Copter::convert_pid_parameters(void)
         { Parameters::k_param_throttle_min, 0, AP_PARAM_FLOAT, "MOT_SPIN_MIN" },
         { Parameters::k_param_throttle_mid, 0, AP_PARAM_FLOAT, "MOT_THST_HOVER" }
     };
+    const AP_Param::ConversionInfo loiter_conversion_info[] = {
+        { Parameters::k_param_wp_nav, 4, AP_PARAM_FLOAT, "LOIT_SPEED" },
+        { Parameters::k_param_wp_nav, 7, AP_PARAM_FLOAT, "LOIT_BRK_JERK" },
+        { Parameters::k_param_wp_nav, 8, AP_PARAM_FLOAT, "LOIT_ACC_MAX" },
+        { Parameters::k_param_wp_nav, 9, AP_PARAM_FLOAT, "LOIT_BRK_ACCEL" }
+    };
 
     // gains increase by 27% due to attitude controller's switch to use radians instead of centi-degrees
     // and motor libraries switch to accept inputs in -1 to +1 range instead of -4500 ~ +4500
@@ -1194,6 +1187,11 @@ void Copter::convert_pid_parameters(void)
     AP_Int8 rc_feel_rp_old;
     if (AP_Param::find_old_parameter(&rc_feel_rp_conversion_info, &rc_feel_rp_old)) {
         AP_Param::set_default_by_name(rc_feel_rp_conversion_info.new_name, (1.0f / (2.0f + rc_feel_rp_old.get() * 0.1f)));
+    }
+    // convert loiter parameters
+    table_size = ARRAY_SIZE(loiter_conversion_info);
+    for (uint8_t i=0; i<table_size; i++) {
+        AP_Param::convert_old_parameter(&loiter_conversion_info[i], 1.0f);
     }
 
     const uint8_t old_rc_keys[14] = { Parameters::k_param_rc_1_old,  Parameters::k_param_rc_2_old,

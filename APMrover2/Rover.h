@@ -241,10 +241,6 @@ private:
     // This is set to -1 when we need to re-read the switch
     uint8_t oldSwitchPosition;
 
-    // These are values received from the GCS if the user is using GCS joystick
-    // control and are substituted for the values coming from the RC radio
-    int16_t rc_override[8];
-
     // A flag if GCS joystick control is in use
     bool rc_override_active;
 
@@ -292,7 +288,9 @@ private:
     aux_switch_pos aux_ch7;
 
     // Battery Sensors
-    AP_BattMonitor battery{MASK_LOG_CURRENT};
+    AP_BattMonitor battery{MASK_LOG_CURRENT,
+                           FUNCTOR_BIND_MEMBER(&Rover::handle_battery_failsafe, void, const char*, const int8_t),
+                           _failsafe_priorities};
 
 #if FRSKY_TELEM_ENABLED == ENABLED
     // FrSky telemetry support
@@ -386,7 +384,6 @@ private:
     // APMrover2.cpp
     void stats_update();
     void ahrs_update();
-    void update_alt();
     void gcs_failsafe_check(void);
     void update_compass(void);
     void update_logging1(void);
@@ -457,6 +454,7 @@ private:
 
     // failsafe.cpp
     void failsafe_trigger(uint8_t failsafe_type, bool on);
+    void handle_battery_failsafe(const char* type_str, const int8_t action);
 #if ADVANCED_FAILSAFE == ENABLED
     void afs_fs_check(void);
 #endif
@@ -466,7 +464,6 @@ private:
     void fence_send_mavlink_status(mavlink_channel_t chan);
 
     // GCS_Mavlink.cpp
-    void send_heartbeat(mavlink_channel_t chan);
     void send_attitude(mavlink_channel_t chan);
     void send_extended_status1(mavlink_channel_t chan);
     void send_location(mavlink_channel_t chan);
@@ -485,7 +482,6 @@ private:
     // Log.cpp
     void Log_Write_Performance();
     void Log_Write_Steering();
-    void Log_Write_Beacon();
     void Log_Write_Startup(uint8_t type);
     void Log_Write_Throttle();
     void Log_Write_Nav_Tuning();
@@ -494,7 +490,6 @@ private:
     void Log_Arm_Disarm();
     void Log_Write_RC(void);
     void Log_Write_Error(uint8_t sub_system, uint8_t error_code);
-    void Log_Write_Baro(void);
     void Log_Write_Home_And_Origin();
     void Log_Write_GuidedTarget(uint8_t target_type, const Vector3f& pos_target, const Vector3f& vel_target);
     void Log_Write_WheelEncoder();
@@ -519,7 +514,6 @@ private:
     // sensors.cpp
     void init_compass(void);
     void compass_accumulate(void);
-    void init_barometer(bool full_calibration);
     void init_rangefinder(void);
     void init_beacon();
     void init_visual_odom();
@@ -552,6 +546,28 @@ private:
     bool arm_motors(AP_Arming::ArmingMethod method);
     bool disarm_motors(void);
     bool is_boat() const;
+
+    enum Failsafe_Action {
+        Failsafe_Action_None          = 0,
+        Failsafe_Action_RTL           = 1,
+        Failsafe_Action_Hold          = 2,
+        Failsafe_Action_SmartRTL      = 3,
+        Failsafe_Action_SmartRTL_Hold = 4,
+        Failsafe_Action_Terminate     = 5
+    };
+
+    static constexpr int8_t _failsafe_priorities[] = {
+                                                       Failsafe_Action_Terminate,
+                                                       Failsafe_Action_Hold,
+                                                       Failsafe_Action_RTL,
+                                                       Failsafe_Action_SmartRTL_Hold,
+                                                       Failsafe_Action_SmartRTL,
+                                                       Failsafe_Action_None,
+                                                       -1 // the priority list must end with a sentinel of -1
+                                                      };
+    static_assert(_failsafe_priorities[ARRAY_SIZE(_failsafe_priorities) - 1] == -1,
+                  "_failsafe_priorities is missing the sentinel");
+
 
 public:
     void mavlink_delay_cb();

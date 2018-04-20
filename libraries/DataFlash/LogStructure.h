@@ -357,6 +357,7 @@ struct PACKED log_POWR {
     float Vcc;
     float Vservo;
     uint16_t flags;
+    uint8_t safety_and_arm;
 };
 
 struct PACKED log_EKF1 {
@@ -821,10 +822,11 @@ struct PACKED log_GPS_SBF_EVENT {
 struct PACKED log_Esc {
     LOG_PACKET_HEADER;
     uint64_t time_us;     
-    int16_t rpm;
-    int16_t voltage;
-    int16_t current;
+    int32_t rpm;
+    uint16_t voltage;
+    uint16_t current;
     int16_t temperature;
+    uint16_t current_tot;
 };
 
 struct PACKED log_AIRSPEED {
@@ -1019,7 +1021,6 @@ struct PACKED log_Performance {
     uint16_t num_long_running;
     uint16_t num_loops;
     uint32_t max_time;
-    uint16_t ins_error_count;
     uint32_t mem_avail;
     uint16_t load;
 };
@@ -1071,10 +1072,10 @@ struct PACKED log_DSTL {
 #define BARO_UNITS "smPOnsmO"
 #define BARO_MULTS "F00B0C?0"
 
-#define ESC_LABELS "TimeUS,RPM,Volt,Curr,Temp"
-#define ESC_FMT   "Qcccc"
-#define ESC_UNITS "sqvAO"
-#define ESC_MULTS "FBBBB"
+#define ESC_LABELS "TimeUS,RPM,Volt,Curr,Temp,CTot"
+#define ESC_FMT   "QeCCcH"
+#define ESC_UNITS "sqvAO-"
+#define ESC_MULTS "FBBBB-"
 
 #define GPA_LABELS "TimeUS,VDop,HAcc,VAcc,SAcc,VV,SMS,Delta"
 #define GPA_FMT   "QCCCCBIH"
@@ -1203,7 +1204,7 @@ Format characters in the format string for binary log messages
     { LOG_BARO_MSG, sizeof(log_BARO), \
       "BARO",  BARO_FMT, BARO_LABELS, BARO_UNITS, BARO_MULTS }, \
     { LOG_POWR_MSG, sizeof(log_POWR), \
-      "POWR","QffH","TimeUS,Vcc,VServo,Flags", "svv-", "FBB-" },  \
+      "POWR","QffHB","TimeUS,Vcc,VServo,Flags,Safety", "svv--", "FBB--" },  \
     { LOG_CMD_MSG, sizeof(log_Cmd), \
       "CMD", "QHHHfffffffB","TimeUS,CTot,CNum,CId,Prm1,Prm2,Prm3,Prm4,Lat,Lng,Alt,Frame", "s-------DUm-", "F-------GG0-" }, \
     { LOG_RADIO_MSG, sizeof(log_Radio), \
@@ -1237,7 +1238,7 @@ Format characters in the format string for binary log messages
     { LOG_PROXIMITY_MSG, sizeof(log_Proximity), \
       "PRX", "QBfffffffffff", "TimeUS,Health,D0,D45,D90,D135,D180,D225,D270,D315,DUp,CAn,CDis", "s-mmmmmmmmmhm", "F-BBBBBBBBB00" }, \
     { LOG_PERFORMANCE_MSG, sizeof(log_Performance),                     \
-      "PM",  "QHHIHIH", "TimeUS,NLon,NLoop,MaxT,INSErr,Mem,Load", "s----b%", "F----0A" }, \
+      "PM",  "QHHIIH", "TimeUS,NLon,NLoop,MaxT,Mem,Load", "s---b%", "F---0A" }, \
     { LOG_SRTL_MSG, sizeof(log_SRTL), \
       "SRTL", "QBHHBfff", "TimeUS,Active,NumPts,MaxPts,Action,N,E,D", "s----mmm", "F----000" }
 
@@ -1418,7 +1419,7 @@ Format characters in the format string for binary log messages
 // message types 0 to 63 reserved for vehicle specific use
 
 // message types for common messages
-enum LogMessages {
+enum LogMessages : uint8_t {
     LOG_NKF1_MSG = 64,
     LOG_NKF2_MSG,
     LOG_NKF3_MSG,

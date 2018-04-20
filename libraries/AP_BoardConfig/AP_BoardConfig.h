@@ -46,7 +46,7 @@ public:
     AP_BoardConfig &operator=(const AP_BoardConfig&) = delete;
 
     // singleton support
-    AP_BoardConfig *get_instance(void) {
+    static AP_BoardConfig *get_instance(void) {
         return instance;
     }
     
@@ -118,22 +118,47 @@ public:
 
     // get number of PWM outputs enabled on FMU
     static uint8_t get_pwm_count(void) {
-#if AP_FEATURE_BOARD_DETECT
+#if AP_FEATURE_BOARD_DETECT || defined(AP_FEATURE_BRD_PWM_COUNT_PARAM)
         return instance?instance->state.pwm_count.get():4;
+#else
+        // default to 16, which means all PWM channels available
+        return 16;
+#endif
+    }
+
+#if AP_FEATURE_SAFETY_BUTTON
+    enum board_safety_button_option {
+        BOARD_SAFETY_OPTION_BUTTON_ACTIVE_SAFETY_OFF=1,
+        BOARD_SAFETY_OPTION_BUTTON_ACTIVE_SAFETY_ON=2,
+        BOARD_SAFETY_OPTION_BUTTON_ACTIVE_ARMED=4,
+    };
+
+    // return safety button options. Bits are in enum board_safety_button_option
+    uint16_t get_safety_button_options(void) {
+        return uint16_t(state.safety_option.get());
+    }
+#endif
+
+    // return the value of BRD_SAFETY_MASK
+    uint16_t get_safety_mask(void) const {
+#if AP_FEATURE_BOARD_DETECT || defined(AP_FEATURE_BRD_PWM_COUNT_PARAM)
+        return uint16_t(state.ignore_safety_channels.get());
 #else
         return 0;
 #endif
     }
+
     
 private:
     static AP_BoardConfig *instance;
     
     AP_Int16 vehicleSerialNumber;
 
-#if AP_FEATURE_BOARD_DETECT
+#if AP_FEATURE_BOARD_DETECT || defined(AP_FEATURE_BRD_PWM_COUNT_PARAM)
     struct {
         AP_Int8 pwm_count;
         AP_Int8 safety_enable;
+        AP_Int16 safety_option;
         AP_Int32 ignore_safety_channels;
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
         AP_Int8 ser1_rtscts;
@@ -143,7 +168,9 @@ private:
         AP_Int8 board_type;
         AP_Int8 io_enable;
     } state;
+#endif
 
+#if AP_FEATURE_BOARD_DETECT
     static enum px4_board_type px4_configured_board;
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
