@@ -4,39 +4,6 @@
 
 #if LOGGING_ENABLED == ENABLED
 
-struct PACKED log_Performance {
-    LOG_PACKET_HEADER;
-    uint64_t time_us;
-    uint32_t loop_time;
-    uint16_t main_loop_count;
-    uint32_t g_dt_max;
-    int16_t  gyro_drift_x;
-    int16_t  gyro_drift_y;
-    int16_t  gyro_drift_z;
-    uint8_t  i2c_lockup_count;
-    uint16_t ins_error_count;
-    uint32_t mem_avail;
-};
-
-// Write a performance monitoring packet. Total length : 19 bytes
-void Rover::Log_Write_Performance()
-{
-    struct log_Performance pkt = {
-        LOG_PACKET_HEADER_INIT(LOG_PERFORMANCE_MSG),
-        time_us         : AP_HAL::micros64(),
-        loop_time       : millis()- perf_mon_timer,
-        main_loop_count : mainLoop_count,
-        g_dt_max        : G_Dt_max,
-        gyro_drift_x    : (int16_t)(ahrs.get_gyro_drift().x * 1000),
-        gyro_drift_y    : (int16_t)(ahrs.get_gyro_drift().y * 1000),
-        gyro_drift_z    : (int16_t)(ahrs.get_gyro_drift().z * 1000),
-        i2c_lockup_count: 0,
-        ins_error_count : ins.error_count(),
-        hal.util->available_memory()
-    };
-    DataFlash.WriteBlock(&pkt, sizeof(pkt));
-}
-
 struct PACKED log_Steering {
     LOG_PACKET_HEADER;
     uint64_t time_us;
@@ -66,16 +33,6 @@ void Rover::Log_Write_Steering()
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
-// Write beacon position and distances
-void Rover::Log_Write_Beacon()
-{
-    // exit immediately if feature is disabled
-    if (!g2.beacon.enabled()) {
-        return;
-    }
-
-    DataFlash.Log_Write_Beacon(g2.beacon);
-}
 struct PACKED log_Startup {
     LOG_PACKET_HEADER;
     uint64_t time_us;
@@ -202,14 +159,6 @@ void Rover::Log_Write_Rangefinder()
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
-void Rover::Log_Write_Current()
-{
-    DataFlash.Log_Write_Current(battery);
-
-    // also write power status
-    DataFlash.Log_Write_Power();
-}
-
 struct PACKED log_Arm_Disarm {
     LOG_PACKET_HEADER;
     uint64_t time_us;
@@ -255,11 +204,6 @@ void Rover::Log_Write_Error(uint8_t sub_system, uint8_t error_code)
   DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
-void Rover::Log_Write_Baro(void)
-{
-    DataFlash.Log_Write_Baro(barometer);
-}
-
 // log ahrs home and EKF origin to dataflash
 void Rover::Log_Write_Home_And_Origin()
 {
@@ -272,7 +216,7 @@ void Rover::Log_Write_Home_And_Origin()
 #endif
 
     // log ahrs home if set
-    if (home_is_set != HOME_UNSET) {
+    if (ahrs.home_is_set()) {
         DataFlash.Log_Write_Origin(LogOriginType::ahrs_home, ahrs.get_home());
     }
 }
@@ -350,8 +294,6 @@ void Rover::Log_Write_Proximity()
 // units and "Format characters" for field type information
 const LogStructure Rover::log_structure[] = {
     LOG_COMMON_STRUCTURES,
-    { LOG_PERFORMANCE_MSG, sizeof(log_Performance),
-      "PM",  "QIHIhhhBHI", "TimeUS,LTime,NLoop,MaxT,GDx,GDy,GDz,I2CErr,INSErr,Mem", "ss-------b", "FC-------0" },
     { LOG_STARTUP_MSG, sizeof(log_Startup),
       "STRT", "QBH",        "TimeUS,SType,CTot", "s--", "F--" },
     { LOG_THR_MSG, sizeof(log_Throttle),
@@ -390,7 +332,6 @@ void Rover::Log_Write_Vehicle_Startup_Messages()
 
 // dummy functions
 void Rover::Log_Write_Startup(uint8_t type) {}
-void Rover::Log_Write_Current() {}
 void Rover::Log_Write_Nav_Tuning() {}
 void Rover::Log_Write_Performance() {}
 void Rover::Log_Write_Throttle() {}
@@ -399,7 +340,6 @@ void Rover::Log_Write_Attitude() {}
 void Rover::Log_Write_RC(void) {}
 void Rover::Log_Write_GuidedTarget(uint8_t target_type, const Vector3f& pos_target, const Vector3f& vel_target) {}
 void Rover::Log_Write_Home_And_Origin() {}
-void Rover::Log_Write_Baro(void) {}
 void Rover::Log_Arm_Disarm() {}
 void Rover::Log_Write_Error(uint8_t sub_system, uint8_t error_code) {}
 void Rover::Log_Write_Steering() {}

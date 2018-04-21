@@ -33,8 +33,10 @@ void Plane::init_ardupilot()
     //
     load_parameters();
 
+#if STATS_ENABLED == ENABLED
     // initialise stats module
     g2.stats.init();
+#endif
 
 #if HIL_SUPPORT
     if (g.hil_mode == 1) {
@@ -115,8 +117,7 @@ void Plane::init_ardupilot()
 #if FRSKY_TELEM_ENABLED == ENABLED
     // setup frsky, and pass a number of parameters to the library
     frsky_telemetry.init(serial_manager, fwver.fw_string,
-                         MAV_TYPE_FIXED_WING,
-                         &g.fs_batt_voltage, &g.fs_batt_mah);
+                         MAV_TYPE_FIXED_WING);
 #endif
 
 #if LOGGING_ENABLED == ENABLED
@@ -199,6 +200,11 @@ void Plane::init_ardupilot()
     if (optflow.enabled()) {
         optflow.init();
     }
+#endif
+
+// init cargo gripper
+#if GRIPPER_ENABLED == ENABLED
+    g2.gripper.init();
 #endif
 
     // disable safety if requested
@@ -581,12 +587,13 @@ void Plane::startup_INS_ground(void)
 
     // read Baro pressure at ground
     //-----------------------------
-    init_barometer(true);
+    barometer.set_log_baro_bit(MASK_LOG_IMU);
+    barometer.calibrate();
 
     if (airspeed.enabled()) {
         // initialize airspeed sensor
         // --------------------------
-        zero_airspeed(true);
+        airspeed.calibrate(true);
     } else {
         gcs().send_text(MAV_SEVERITY_WARNING,"No airspeed");
     }
@@ -598,17 +605,6 @@ void Plane::update_notify()
 {
     notify.update();
 }
-
-void Plane::resetPerfData(void) 
-{
-    perf.mainLoop_count = 0;
-    perf.G_Dt_max       = 0;
-    perf.G_Dt_min       = 0;
-    perf.num_long       = 0;
-    perf.start_ms       = millis();
-    perf.last_log_dropped = DataFlash.num_dropped();
-}
-
 
 // sets notify object flight mode information
 void Plane::notify_flight_mode(enum FlightMode mode)

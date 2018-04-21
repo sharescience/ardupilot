@@ -63,7 +63,7 @@ void SITL_State::_sitl_setup(const char *home_str)
 {
     _home_str = home_str;
 
-#ifndef __CYGWIN__
+#if !defined(__CYGWIN__) && !defined(__CYGWIN64__)
     _parent_pid = getppid();
 #endif
     _rcout_addr.sin_family = AF_INET;
@@ -191,6 +191,19 @@ void SITL_State::wait_clock(uint64_t wait_time_usec)
     }
 }
 
+#define streq(a, b) (!strcmp(a, b))
+int SITL_State::sim_fd(const char *name, const char *arg)
+{
+    if (streq(name, "vicon")) {
+        if (vicon != nullptr) {
+            AP_HAL::panic("Only one vicon system at a time");
+        }
+        vicon = new SITL::Vicon();
+        return vicon->fd();
+    }
+    AP_HAL::panic("unknown simulated device: %s", name);
+}
+
 #ifndef HIL_MODE
 /*
   check for a SITL RC input packet
@@ -292,6 +305,13 @@ void SITL_State::_fdm_input_local(void)
     if (adsb != nullptr) {
         adsb->update();
     }
+    if (vicon != nullptr) {
+        Quaternion attitude;
+        sitl_model->get_attitude(attitude);
+        vicon->update(sitl_model->get_location(),
+                      sitl_model->get_position(),
+                      attitude);
+    }
 
     if (_sitl && _use_fg_view) {
         _output_to_flightgear();
@@ -343,10 +363,12 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
     float altitude = _barometer?_barometer->get_altitude():0;
     float wind_speed = 0;
     float wind_direction = 0;
+    float wind_dir_z = 0;
     if (_sitl) {
         // The EKF does not like step inputs so this LPF keeps it happy.
-        wind_speed = _sitl->wind_speed_active = (0.95f*_sitl->wind_speed_active) + (0.05f*_sitl->wind_speed);
+        wind_speed =     _sitl->wind_speed_active     = (0.95f*_sitl->wind_speed_active)     + (0.05f*_sitl->wind_speed);
         wind_direction = _sitl->wind_direction_active = (0.95f*_sitl->wind_direction_active) + (0.05f*_sitl->wind_direction);
+        wind_dir_z =     _sitl->wind_dir_z_active     = (0.95f*_sitl->wind_dir_z_active)     + (0.05f*_sitl->wind_dir_z);
     }
 
     if (altitude < 0) {
@@ -359,6 +381,7 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
     input.wind.speed = wind_speed;
     input.wind.direction = wind_direction;
     input.wind.turbulence = _sitl?_sitl->wind_turbulance:0;
+    input.wind.dir_z = wind_dir_z;
 
     for (i=0; i<SITL_NUM_CHANNELS; i++) {
         if (pwm_output[i] == 0xFFFF) {
@@ -441,6 +464,9 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
     // assume 3DR power brick
     voltage_pin_value = ((voltage / 10.1f) / 5.0f) * 1024;
     current_pin_value = ((_current / 17.0f) / 5.0f) * 1024;
+    // fake battery2 as just a 25% gain on the first one
+    voltage2_pin_value = ((voltage * 0.25f / 10.1f) / 5.0f) * 1024;
+    current2_pin_value = ((_current * 0.25f / 17.0f) / 5.0f) * 1024;
 }
 
 void SITL_State::init(int argc, char * const argv[])
@@ -466,8 +492,9 @@ void SITL_State::set_height_agl(void)
     }
 
 #if AP_TERRAIN_AVAILABLE
-    if (_terrain &&
-            _sitl->terrain_enable) {
+    if (_terrain != nullptr &&
+        _sitl != nullptr &&
+        _sitl->terrain_enable) {
         // get height above terrain from AP_Terrain. This assumes
         // AP_Terrain is working
         float terrain_height_amsl;
@@ -482,8 +509,10 @@ void SITL_State::set_height_agl(void)
     }
 #endif
 
-    // fall back to flat earth model
-    _sitl->height_agl = _sitl->state.altitude - home_alt;
+    if (_sitl != nullptr) {
+        // fall back to flat earth model
+        _sitl->height_agl = _sitl->state.altitude - home_alt;
+    }
 }
 
 #endif

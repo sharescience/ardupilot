@@ -4,6 +4,8 @@
 # MCU class and specific type
 MCU STM32F4xx STM32F405xx
 
+define CONFIG_HAL_BOARD_SUBTYPE HAL_BOARD_SUBTYPE_CHIBIOS_SPARKY2
+
 # board ID for firmware load
 APJ_BOARD_ID 11
 
@@ -19,13 +21,6 @@ STM32_VDD 330U
 # serial port for stdout via flexi-port (conn3)
 STDOUT_SERIAL SD1
 STDOUT_BAUDRATE 115200
-
-# USB setup
-USB_VENDOR 0x0483 # ST
-USB_PRODUCT 0x5740
-USB_STRING_MANUFACTURER "ArduPilot"
-USB_STRING_PRODUCT "ChibiOS/RT Virtual COM Port"
-USB_STRING_SERIAL  "100"
 
 # only one I2C bus
 I2C_ORDER I2C1

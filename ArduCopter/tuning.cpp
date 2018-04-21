@@ -10,7 +10,7 @@
 void Copter::tuning() {
     RC_Channel *rc6 = RC_Channels::rc_channel(CH_6);
 
-    // exit immediately if not using tuning function, or when radio failsafe is invoked, so tuning values are not set to zero    
+    // exit immediately if not using tuning function, or when radio failsafe is invoked, so tuning values are not set to zero
     if ((g.radio_tuning <= 0) || failsafe.radio || failsafe.radio_counter != 0 || rc6->get_radio_in() == 0) {
         return;
     }
@@ -133,15 +133,19 @@ void Copter::tuning() {
         compass.set_declination(ToRad((2.0f * control_in - g.radio_tuning_high)/100.0f), false);     // 2nd parameter is false because we do not want to save to eeprom because this would have a performance impact
         break;
 
+#if MODE_CIRCLE_ENABLED == ENABLED
     case TUNING_CIRCLE_RATE:
         // set circle rate up to approximately 45 deg/sec in either direction
         circle_nav->set_rate((float)control_in/25.0f-20.0f);
         break;
+#endif
 
+#if RANGEFINDER_ENABLED == ENABLED
     case TUNING_RANGEFINDER_GAIN:
         // set rangefinder gain
         g.rangefinder_gain.set(tuning_value);
         break;
+#endif
 
 #if 0
         // disabled for now - we need accessor functions
@@ -175,8 +179,8 @@ void Copter::tuning() {
 #endif
 
     case TUNING_RC_FEEL_RP:
-        // roll-pitch input smoothing
-        g.rc_feel_rp = control_in / 10;
+        // convert from control_in to input time constant
+        attitude_control->set_input_tc(1.0f / (2.0f + MAX((control_in * 0.01f), 0.0f)));
         break;
 
     case TUNING_RATE_PITCH_KP:
@@ -213,6 +217,7 @@ void Copter::tuning() {
          attitude_control->get_rate_yaw_pid().filt_hz(tuning_value);
          break;
 
+#if WINCH_ENABLED == ENABLED
      case TUNING_WINCH: {
          float desired_rate = 0.0f;
          if (v > 0.6f) {
@@ -224,5 +229,6 @@ void Copter::tuning() {
          g2.winch.set_desired_rate(desired_rate);
          break;
          }
+#endif
      }
 }

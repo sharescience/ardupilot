@@ -33,6 +33,8 @@
 *~
 .*.swo
 .*.swp
+*.i
+*.ii
 .DS_Store
 .autotools
 .built
@@ -92,3 +94,5 @@ test.ArduCopter/*
 GPATH
 GRTAGS
 GTAGS
+config.mk
+*.apj

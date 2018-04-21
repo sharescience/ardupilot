@@ -63,6 +63,10 @@ public:
     float get_temperature(void) const { return get_temperature(_primary); }
     float get_temperature(uint8_t instance) const { return sensors[instance].temperature; }
 
+    // get pressure correction in Pascal. Divide by 100 for millibars or hectopascals
+    float get_pressure_correction(void) const { return get_pressure_correction(_primary); }
+    float get_pressure_correction(uint8_t instance) const { return sensors[instance].p_correction; }
+    
     // accumulate a reading on sensors. Some backends without their
     // own thread or a timer may need this.
     void accumulate(void);
@@ -168,6 +172,12 @@ public:
     // set a pressure correction from AP_TempCalibration
     void set_pressure_correction(uint8_t instance, float p_correction);
 
+    uint8_t get_filter_range() const { return _filter_range; }
+
+    // indicate which bit in LOG_BITMASK indicates baro logging enabled
+    void set_log_baro_bit(uint32_t bit) { _log_baro_bit = bit; }
+    bool should_df_log() const;
+
 private:
     // singleton
     static AP_Baro *_instance;
@@ -181,6 +191,8 @@ private:
 
     // what is the primary sensor at the moment?
     uint8_t _primary;
+
+    uint32_t _log_baro_bit = -1;
 
     struct sensor {
         baro_type_t type;                   // 0 for air pressure (default), 1 for water pressure
@@ -214,4 +226,9 @@ private:
     uint32_t                            _last_notify_ms;
 
     bool _add_backend(AP_Baro_Backend *backend);
+    AP_Int8                            _filter_range;  // valid value range from mean value
+};
+
+namespace AP {
+    AP_Baro &baro();
 };

@@ -32,9 +32,10 @@ void Rover::init_ardupilot()
     //
 
     load_parameters();
-
+#if STATS_ENABLED == ENABLED
     // initialise stats module
     g2.stats.init();
+#endif
 
     gcs().set_dataflash(&DataFlash);
 
@@ -79,7 +80,7 @@ void Rover::init_ardupilot()
 
     // setup frsky telemetry
 #if FRSKY_TELEM_ENABLED == ENABLED
-    frsky_telemetry.init(serial_manager, fwver.fw_string, MAV_TYPE_GROUND_ROVER);
+    frsky_telemetry.init(serial_manager, fwver.fw_string, (is_boat() ? MAV_TYPE_SURFACE_BOAT : MAV_TYPE_GROUND_ROVER));
 #endif
 
 #if LOGGING_ENABLED == ENABLED
@@ -102,13 +103,12 @@ void Rover::init_ardupilot()
     init_visual_odom();
 
     // and baro for EKF
-    init_barometer(true);
+    barometer.set_log_baro_bit(MASK_LOG_IMU);
+    barometer.calibrate();
 
     // Do GPS init
     gps.set_log_gps_bit(MASK_LOG_GPS);
     gps.init(serial_manager);
-
-    rc_override_active = hal.rcin->set_overrides(rc_override, 8);
 
     ins.set_log_raw_bit(MASK_LOG_IMU_RAW);
 
@@ -262,20 +262,6 @@ void Rover::startup_INS_ground(void)
     ahrs.reset();
 }
 
-// updates the notify state
-// should be called at 50hz
-void Rover::update_notify()
-{
-    notify.update();
-}
-
-void Rover::resetPerfData(void) {
-    mainLoop_count = 0;
-    G_Dt_max = 0;
-    perf_mon_timer = millis();
-}
-
-
 void Rover::check_usb_mux(void)
 {
     bool usb_check = hal.gpio->usb_connected();
@@ -363,13 +349,6 @@ bool Rover::disarm_motors(void)
     change_arm_state();
 
     return true;
-}
-
-// save current position for use by the smart_rtl mode
-void Rover::smart_rtl_update()
-{
-    const bool save_position = (control_mode != &mode_smartrtl);
-    mode_smartrtl.save_position(save_position);
 }
 
 // returns true if vehicle is a boat

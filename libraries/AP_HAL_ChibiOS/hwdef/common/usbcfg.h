@@ -28,9 +28,20 @@
  */
 #pragma once
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 #if HAL_USE_SERIAL_USB
 extern const USBConfig usbcfg;
 extern SerialUSBConfig serusbcfg;
 extern SerialUSBDriver SDU1;
 #endif
+
+void setup_usb_strings(void);
+
+#if defined(__cplusplus)
+}
+#endif
+    
 /** @} */

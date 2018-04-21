@@ -17,9 +17,10 @@
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Math/AP_Math.h>
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
 #include "Util.h"
 #include <chheap.h>
+#include "ToneAlarm.h"
+#include "RCOutput.h"
 
 #if HAL_WITH_IO_MCU
 #include <AP_BoardConfig/AP_BoardConfig.h>
@@ -27,7 +28,11 @@
 extern AP_IOMCU iomcu;
 #endif
 
+extern const AP_HAL::HAL& hal;
+
 using namespace ChibiOS;
+
+#if CH_CFG_USE_HEAP == TRUE
 
 extern "C" {
     size_t mem_available(void);
@@ -74,17 +79,18 @@ void* Util::try_alloc_from_ccm_ram(size_t size)
     return ret;
 }
 
+#endif // CH_CFG_USE_HEAP
+
 /*
   get safety switch state
  */
 Util::safety_state Util::safety_switch_state(void)
 {
-#if HAL_WITH_IO_MCU
-    if (AP_BoardConfig::io_enabled()) {
-        return iomcu.get_safety_switch_state();
-    }
-#endif
+#if HAL_USE_PWM == TRUE
+    return ((RCOutput *)hal.rcout)->_safety_switch_state();
+#else
     return SAFETY_NONE;
+#endif
 }
 
 void Util::set_imu_temp(float current)
@@ -137,4 +143,41 @@ void Util::set_imu_target_temp(int8_t *target)
 #endif
 }
 
-#endif //CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
+#ifdef HAL_PWM_ALARM
+static int state;
+ToneAlarm Util::_toneAlarm;
+
+bool Util::toneAlarm_init()
+{
+    return _toneAlarm.init();
+}
+
+void Util::toneAlarm_set_tune(uint8_t tone)
+{
+    _toneAlarm.set_tune(tone);
+}
+
+// (state 0) if init_tune() -> (state 1) complete=false
+// (state 1) if set_note -> (state 2) -> if play -> (state 3)
+//   play returns true if tune has changed or tune is complete (repeating tunes never complete)
+// (state 3) -> (state 1)
+// (on every tick) if (complete) -> (state 0)
+void Util::_toneAlarm_timer_tick() {
+    if(state == 0) {
+        state = state + _toneAlarm.init_tune();
+    } else if (state == 1) {
+        state = state + _toneAlarm.set_note();
+    }
+    if (state == 2) {
+        state = state + _toneAlarm.play();
+    } else if (state == 3) {
+        state = 1;
+    }
+
+    if (_toneAlarm.is_tune_comp()) {
+        state = 0;
+    }
+
+}
+#endif // HAL_PWM_ALARM
+

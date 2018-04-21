@@ -25,6 +25,8 @@
 
 #define CH_STORAGE_SIZE HAL_STORAGE_SIZE
 
+#ifndef HAL_USE_EMPTY_STORAGE
+
 // when using flash storage we use a small line size to make storage
 // compact and minimise the number of erase cycles needed
 #define CH_STORAGE_LINE_SHIFT 3
@@ -38,7 +40,7 @@ public:
     void read_block(void *dst, uint16_t src, size_t n);
     void write_block(uint16_t dst, const void* src, size_t n);
 
-    void _timer_tick(void);
+    void _timer_tick(void) override;
 
 private:
     volatile bool _initialised;
@@ -71,3 +73,5 @@ private:
     bool using_fram;
 #endif
 };
+
+#endif // HAL_USE_EMPTY_STORAGE

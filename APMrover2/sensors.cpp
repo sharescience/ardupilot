@@ -39,17 +39,6 @@ void Rover::compass_accumulate(void)
     }
 }
 
-void Rover::init_barometer(bool full_calibration)
-{
-    gcs().send_text(MAV_SEVERITY_INFO, "Calibrating barometer");
-    if (full_calibration) {
-        barometer.calibrate();
-    } else {
-        barometer.update_calibration();
-    }
-    gcs().send_text(MAV_SEVERITY_INFO, "Barometer calibration complete");
-}
-
 void Rover::init_rangefinder(void)
 {
     rangefinder.init();
@@ -59,12 +48,6 @@ void Rover::init_rangefinder(void)
 void Rover::init_beacon()
 {
     g2.beacon.init();
-}
-
-// update beacons
-void Rover::update_beacon()
-{
-    g2.beacon.update();
 }
 
 // init visual odometry sensor
@@ -160,13 +143,6 @@ void Rover::update_wheel_encoder()
 
     // record system time update for next iteration
     wheel_encoder_last_ekf_update_ms = now;
-}
-
-// read_battery - reads battery voltage and current and invokes failsafe
-// should be called at 10hz
-void Rover::read_battery(void)
-{
-    battery.read();
 }
 
 // read the receiver RSSI as an 8 bit number for MAVLink
@@ -267,25 +243,11 @@ void Rover::read_rangefinders(void)
     }
 }
 
-/*
-  update AP_Button
- */
-void Rover::button_update(void)
-{
-    button.update();
-}
-
 // initialise proximity sensor
 void Rover::init_proximity(void)
 {
     g2.proximity.init();
     g2.proximity.set_rangefinder(&rangefinder);
-}
-
-// update proximity sensor
-void Rover::update_proximity(void)
-{
-    g2.proximity.update();
 }
 
 // update error mask of sensors and subsystems. The mask
@@ -320,7 +282,8 @@ void Rover::update_sensor_status_flags(void)
                                                          ~MAV_SYS_STATUS_SENSOR_YAW_POSITION &
                                                          ~MAV_SYS_STATUS_SENSOR_XY_POSITION_CONTROL &
                                                          ~MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS &
-                                                         ~MAV_SYS_STATUS_LOGGING);
+                                                         ~MAV_SYS_STATUS_LOGGING &
+                                                         ~MAV_SYS_STATUS_SENSOR_BATTERY);
     if (control_mode->attitude_stabilized()) {
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_ANGULAR_RATE_CONTROL; // 3D angular rate control
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_ATTITUDE_STABILIZATION; // 3D angular rate control
@@ -337,6 +300,10 @@ void Rover::update_sensor_status_flags(void)
     // set motors outputs as enabled if safety switch is not disarmed (i.e. either NONE or ARMED)
     if (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED) {
         control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS;
+    }
+
+    if (battery.num_instances() > 0) {
+        control_sensors_enabled |= MAV_SYS_STATUS_SENSOR_BATTERY;
     }
 
     // default to all healthy except compass and gps which we set individually
@@ -377,6 +344,10 @@ void Rover::update_sensor_status_flags(void)
     }
     if (rover.DataFlash.logging_failed()) {
         control_sensors_health &= ~MAV_SYS_STATUS_LOGGING;
+    }
+
+    if (!battery.healthy() || battery.has_failsafed()) {
+        control_sensors_enabled &= ~MAV_SYS_STATUS_SENSOR_BATTERY;
     }
 
     if (!initialised || ins.calibrating()) {

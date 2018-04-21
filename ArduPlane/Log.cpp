@@ -54,33 +54,6 @@ void Plane::Log_Write_Fast(void)
 }
 
 
-struct PACKED log_Performance {
-    LOG_PACKET_HEADER;
-    uint64_t time_us;
-    uint16_t num_long;
-    uint16_t main_loop_count;
-    uint32_t g_dt_max;
-    uint32_t g_dt_min;
-    uint32_t log_dropped;
-    uint32_t mem_avail;
-};
-
-// Write a performance monitoring packet. Total length : 19 bytes
-void Plane::Log_Write_Performance()
-{
-    struct log_Performance pkt = {
-        LOG_PACKET_HEADER_INIT(LOG_PERFORMANCE_MSG),
-        time_us         : AP_HAL::micros64(),
-        num_long        : perf.num_long,
-        main_loop_count : perf.mainLoop_count,
-        g_dt_max        : perf.G_Dt_max,
-        g_dt_min        : perf.G_Dt_min,
-        log_dropped     : DataFlash.num_dropped() - perf.last_log_dropped,
-        hal.util->available_memory()
-    };
-    DataFlash.WriteCriticalBlock(&pkt, sizeof(pkt));
-}
-
 struct PACKED log_Startup {
     LOG_PACKET_HEADER;
     uint64_t time_us;
@@ -185,7 +158,7 @@ void Plane::Log_Write_Status()
         ,armed       : hal.util->get_soft_armed()
         ,safety      : static_cast<uint8_t>(hal.util->safety_switch_state())
         ,is_crashed  : crash_state.is_crashed
-        ,is_still    : plane.ins.is_still()
+        ,is_still    : AP::ins().is_still()
         ,stage       : static_cast<uint8_t>(flight_stage)
         ,impact      : crash_state.impact_detected
         };
@@ -263,14 +236,6 @@ struct PACKED log_Arm_Disarm {
     uint16_t arm_checks;
 };
 
-void Plane::Log_Write_Current()
-{
-    DataFlash.Log_Write_Current(battery);
-
-    // also write power status
-    DataFlash.Log_Write_Power();
-}
-
 void Plane::Log_Arm_Disarm() {
     struct log_Arm_Disarm pkt = {
         LOG_PACKET_HEADER_INIT(LOG_ARM_DISARM_MSG),
@@ -307,16 +272,9 @@ void Plane::Log_Write_AETR()
     DataFlash.WriteBlock(&pkt, sizeof(pkt));
 }
 
-void Plane::Log_Write_GPS(uint8_t instance)
+void Plane::Log_Write_IMU()
 {
-    if (!ahrs.have_ekf_logging()) {
-        DataFlash.Log_Write_GPS(gps, instance);
-    }
-}
-
-void Plane::Log_Write_IMU() 
-{
-    DataFlash.Log_Write_IMU(ins);
+    DataFlash.Log_Write_IMU();
 }
 
 void Plane::Log_Write_RC(void)
@@ -327,13 +285,6 @@ void Plane::Log_Write_RC(void)
         DataFlash.Log_Write_RSSI(rssi);
     }
     Log_Write_AETR();
-}
-
-void Plane::Log_Write_Baro(void)
-{
-    if (!ahrs.have_ekf_logging()) {
-        DataFlash.Log_Write_Baro(barometer);
-    }
 }
 
 // Write a AIRSPEED packet
@@ -360,7 +311,7 @@ void Plane::Log_Write_Home_And_Origin()
 #endif
 
     // log ahrs home if set
-    if (home_is_set != HOME_UNSET) {
+    if (ahrs.home_is_set()) {
         DataFlash.Log_Write_Origin(LogOriginType::ahrs_home, ahrs.get_home());
     }
 }
@@ -370,8 +321,6 @@ void Plane::Log_Write_Home_And_Origin()
 // units and "Format characters" for field type information
 const struct LogStructure Plane::log_structure[] = {
     LOG_COMMON_STRUCTURES,
-    { LOG_PERFORMANCE_MSG, sizeof(log_Performance), 
-      "PM",  "QHHIIII",  "TimeUS,NLon,NLoop,MaxT,MinT,LogDrop,Mem", "ss----b", "FC----0" },
     { LOG_STARTUP_MSG, sizeof(log_Startup),         
       "STRT", "QBH",         "TimeUS,SType,CTot", "s--", "F--" },
     { LOG_CTUN_MSG, sizeof(log_Control_Tuning),     
@@ -439,12 +388,9 @@ void Plane::Log_Write_Sonar() {}
 void Plane::Log_Write_Optflow() {}
  #endif
 
-void Plane::Log_Write_Current() {}
 void Plane::Log_Arm_Disarm() {}
-void Plane::Log_Write_GPS(uint8_t instance) {}
 void Plane::Log_Write_IMU() {}
 void Plane::Log_Write_RC(void) {}
-void Plane::Log_Write_Baro(void) {}
 void Plane::Log_Write_Airspeed(void) {}
 void Plane::Log_Write_Home_And_Origin() {}
 

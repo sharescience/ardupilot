@@ -43,7 +43,7 @@ public:
 
     // read input from hal.rcin - create a control_in value
     void        set_pwm(int16_t pwm);
-    void        set_pwm_no_deadzone(int16_t pwm);
+    void        recompute_pwm_no_deadzone();
 
     // calculate an angle given dead_zone and trim. This is used by the quadplane code
     // for hover throttle
@@ -96,6 +96,9 @@ public:
     void       save_radio_trim() { radio_trim.save();}
 
     void       set_and_save_trim() { radio_trim.set_and_save_ifchanged(radio_in);}
+
+    // set and save trim if changed
+    void       set_and_save_radio_trim(int16_t val) { radio_trim.set_and_save_ifchanged(val);}
     
     bool min_max_configured() const;
     
@@ -142,6 +145,18 @@ public:
     static RC_Channel *rc_channel(uint8_t chan) {
         return (chan < NUM_RC_CHANNELS)?&channels[chan]:nullptr;
     }
+
+    static uint16_t get_radio_in(const uint8_t chan); // returns the last read radio_in value from a chan, 0 if the channel is out of range
+    static uint8_t get_radio_in(uint16_t *chans, const uint8_t num_channels); // reads a block of chanel radio_in values starting from channel 0
+                                                                              // returns the number of valid channels
+
+    static uint8_t get_valid_channel_count(void);                      // returns the number of valid channels in the last read
+    static int16_t get_receiver_rssi(void);                            // returns [0, 255] for receiver RSSI (0 is no link) if present, otherwise -1
+    static bool has_new_input(void);                                   // returns true if there has been new input since last checked
+    static void clear_overrides(void);                                 // clears any active overrides
+    static bool receiver_bind(const int dsmMode);                      // puts the reciever in bind mode if present, returns true if success
+    static bool set_override(const uint8_t chan, const int16_t value); // set a channels override value
+    static bool set_overrides(int16_t *overrides, const uint8_t len);  // set multiple overrides at once
 
     static void set_pwm_all(void);
     

@@ -1,43 +1,5 @@
 #include "Copter.h"
 
-// get_smoothing_gain - returns smoothing gain to be passed into attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw
-//      result is a number from 2 to 12 with 2 being very sluggish and 12 being very crisp
-float Copter::get_smoothing_gain()
-{
-    return (2.0f + (float)g.rc_feel_rp/10.0f);
-}
-
-// get_pilot_desired_angle - transform pilot's roll or pitch input into a desired lean angle
-// returns desired angle in centi-degrees
-void Copter::get_pilot_desired_lean_angles(float roll_in, float pitch_in, float &roll_out, float &pitch_out, float angle_max)
-{
-    // sanity check angle max parameter
-    aparm.angle_max = constrain_int16(aparm.angle_max,1000,8000);
-
-    // limit max lean angle
-    angle_max = constrain_float(angle_max, 1000, aparm.angle_max);
-
-    // scale roll_in, pitch_in to ANGLE_MAX parameter range
-    float scaler = aparm.angle_max/(float)ROLL_PITCH_YAW_INPUT_MAX;
-    roll_in *= scaler;
-    pitch_in *= scaler;
-
-    // do circular limit
-    float total_in = norm(pitch_in, roll_in);
-    if (total_in > angle_max) {
-        float ratio = angle_max / total_in;
-        roll_in *= ratio;
-        pitch_in *= ratio;
-    }
-
-    // do lateral tilt to euler roll conversion
-    roll_in = (18000/M_PI) * atanf(cosf(pitch_in*(M_PI/18000))*tanf(roll_in*(M_PI/18000)));
-
-    // return
-    roll_out = roll_in;
-    pitch_out = pitch_in;
-}
-
 // get_pilot_desired_heading - transform pilot's yaw input into a
 // desired yaw rate
 // returns desired yaw rate in centi-degrees per second
@@ -65,36 +27,6 @@ float Copter::get_pilot_desired_yaw_rate(int16_t stick_angle)
     }
     // convert pilot input to the desired yaw rate
     return yaw_request;
-}
-
-/*************************************************************
- * yaw controllers
- *************************************************************/
-
-// get_roi_yaw - returns heading towards location held in roi_WP
-// should be called at 100hz
-float Copter::get_roi_yaw()
-{
-    static uint8_t roi_yaw_counter = 0;     // used to reduce update rate to 100hz
-
-    roi_yaw_counter++;
-    if (roi_yaw_counter >= 4) {
-        roi_yaw_counter = 0;
-        yaw_look_at_WP_bearing = get_bearing_cd(inertial_nav.get_position(), roi_WP);
-    }
-
-    return yaw_look_at_WP_bearing;
-}
-
-float Copter::get_look_ahead_yaw()
-{
-    const Vector3f& vel = inertial_nav.get_velocity();
-    float speed = norm(vel.x,vel.y);
-    // Commanded Yaw to automatically look ahead.
-    if (position_ok() && (speed > YAW_LOOK_AHEAD_MIN_SPEED)) {
-        yaw_look_ahead_bearing = degrees(atan2f(vel.y,vel.x))*100.0f;
-    }
-    return yaw_look_ahead_bearing;
 }
 
 /*************************************************************
@@ -149,7 +81,7 @@ float Copter::get_pilot_desired_throttle(int16_t throttle_control, float thr_mid
         thr_mid = motors->get_throttle_hover();
     }
 
-    int16_t mid_stick = channel_throttle->get_control_mid();
+    int16_t mid_stick = get_throttle_mid();
     // protect against unlikely divide by zero
     if (mid_stick <= 0) {
         mid_stick = 500;
@@ -186,8 +118,16 @@ float Copter::get_pilot_desired_climb_rate(float throttle_control)
         return 0.0f;
     }
 
+#if TOY_MODE_ENABLED == ENABLED
+    if (g2.toy_mode.enabled()) {
+        // allow throttle to be reduced after throttle arming and for
+        // slower descent close to the ground
+        g2.toy_mode.throttle_adjust(throttle_control);
+    }
+#endif
+    
     float desired_rate = 0.0f;
-    float mid_stick = channel_throttle->get_control_mid();
+    float mid_stick = get_throttle_mid();
     float deadband_top = mid_stick + g.throttle_deadzone;
     float deadband_bottom = mid_stick - g.throttle_deadzone;
 

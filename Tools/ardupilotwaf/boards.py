@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 from collections import OrderedDict
-import sys
+import sys, os
 
 import waflib
 from waflib.Configure import conf
@@ -64,7 +64,6 @@ class Board:
             cfg.srcnode.find_dir('libraries/AP_Common/missing').abspath()
         ])
 
-
     def configure_env(self, cfg, env):
         # Use a dictionary instead of the convetional list for definitions to
         # make easy to override them. Convert back to list before consumption.
@@ -104,7 +103,6 @@ class Board:
             env.CFLAGS += [
                 '-g',
                 '-O0',
-                '-Wno-trigraphs',
             ]
 
         env.CXXFLAGS += [
@@ -190,6 +188,10 @@ class Board:
         cfg.define('__STDC_FORMAT_MACROS', 1)
 
 
+    def pre_build(self, bld):
+        '''pre-build hook that gets called before dynamic sources'''
+        pass
+
     def build(self, bld):
         bld.ap_version_append_str('GIT_VERSION', bld.git_head_hash(short=True))
         import time
@@ -200,8 +202,25 @@ class Board:
 
 Board = BoardMeta('Board', Board.__bases__, dict(Board.__dict__))
 
+def add_dynamic_boards():
+    '''add boards based on existance of hwdef.dat in subdirectories for ChibiOS'''
+    dirname, dirlist, filenames = next(os.walk('libraries/AP_HAL_ChibiOS/hwdef'))
+    for d in dirlist:
+        if d in _board_classes.keys():
+            continue
+        hwdef = os.path.join(dirname, d, 'hwdef.dat')
+        if os.path.exists(hwdef):
+            newclass = type(d, (chibios,), {'name': d})
+
 def get_boards_names():
-    return sorted(list(_board_classes.keys()))
+    add_dynamic_boards()
+    ret = sorted(list(_board_classes.keys()))
+    # some board types should not be selected
+    hidden = ['chibios']
+    for h in hidden:
+        if h in ret:
+            ret.remove(h)
+    return ret        
 
 @conf
 def get_board(ctx):
@@ -246,6 +265,15 @@ class sitl(Board):
             env.LIB += [
                 'winmm',
             ]
+            env.CXXFLAGS += ['-DCYGWIN_BUILD']
+
+
+        if 'clang++' in cfg.env.COMPILER_CXX:
+            print("Disabling SLP for clang++")
+            env.CXXFLAGS += [
+                '-fno-slp-vectorize' # compiler bug when trying to use SLP
+            ]
+
 
 class chibios(Board):
     toolchain = 'arm-none-eabi'
@@ -266,6 +294,9 @@ class chibios(Board):
         env.AP_LIBRARIES += [
             'AP_HAL_ChibiOS',
         ]
+
+        # make board name available for USB IDs
+        env.CHIBIOS_BOARD_NAME = 'HAL_BOARD_NAME="%s"' % self.name
 
         env.CXXFLAGS += [
             '-Wlogical-op',
@@ -295,7 +326,6 @@ class chibios(Board):
             '-Werror=init-self',
             '-Wframe-larger-than=1024',
             '-Werror=unused-but-set-variable',
-            '-Wdouble-promotion',
             '-Wno-missing-field-initializers',
             '-Wno-trigraphs',
             '-Os',
@@ -317,6 +347,9 @@ class chibios(Board):
             '-mfpu=fpv4-sp-d16',
             '-mfloat-abi=hard'
         ]
+
+        if sys.platform == 'cygwin':
+            env.CXXFLAGS += ['-DCYGWIN_BUILD']
 
         bldnode = cfg.bldnode.make_node(self.name)
         env.BUILDROOT = bldnode.make_node('').abspath()
@@ -343,70 +376,30 @@ class chibios(Board):
             '-mfpu=fpv4-sp-d16',
             '-mno-thumb-interwork',
             '-mthumb',
+            '-L%s' % env.BUILDROOT,
             '-L%s' % cfg.srcnode.make_node('modules/ChibiOS/os/common/startup/ARMCMx/compilers/GCC/ld/').abspath(),
             '-L%s' % cfg.srcnode.make_node('libraries/AP_HAL_ChibiOS/hwdef/common/').abspath(),
-            '-Wl,--gc-sections,--no-warn-mismatch,--library-path=/ld,--script=%s/ldscript.ld,--defsym=__process_stack_size__=0x400,--defsym=__main_stack_size__=0x400' % env.BUILDROOT,
+            '-Wl,--gc-sections,--no-warn-mismatch,--library-path=/ld,--script=ldscript.ld,--defsym=__process_stack_size__=0x400,--defsym=__main_stack_size__=0x400',
         ]
 
         env.LIB += ['gcc', 'm']
+
         env.GIT_SUBMODULES += [
             'ChibiOS',
         ]
         cfg.load('chibios')
-        env.CHIBIOS_FATFS_FLAG = 'USE_FATFS=yes'
 
     def build(self, bld):
         super(chibios, self).build(bld)
         bld.load('chibios')
 
-class skyviper_f412(chibios):
-    name = 'skyviper-f412'
-    def configure_env(self, cfg, env):
-        super(skyviper_f412, self).configure_env(cfg, env)
-        env.DEFINES.update(
-            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_SKYVIPER_F412',
-        )
-        env.CHIBIOS_FATFS_FLAG = 'USE_FATFS=no'
-        env.DEFAULT_PARAMETERS = '../../Tools/Frame_params/SkyViper-F412/defaults.parm'
-
-class fmuv3(chibios):
-    name = 'fmuv3'
-    def configure_env(self, cfg, env):
-        super(fmuv3, self).configure_env(cfg, env)
-        env.DEFINES.update(
-            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_FMUV3',
-        )
-
-class skyviper_v2450(fmuv3):
-    name = 'skyviper-v2450'
-    def configure_env(self, cfg, env):
-        super(skyviper_v2450, self).configure_env(cfg, env)
-        env.DEFAULT_PARAMETERS = '../../Tools/Frame_params/SkyViper-2450GPS/defaults.parm'
-
-class fmuv4(chibios):
-    name = 'fmuv4'
-    def configure_env(self, cfg, env):
-        super(fmuv4, self).configure_env(cfg, env)
-        env.DEFINES.update(
-            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_FMUV4',
-        )
-
-class mindpx_v2(chibios):
-    name = 'mindpx-v2'
-    def configure_env(self, cfg, env):
-        super(mindpx_v2, self).configure_env(cfg, env)
-        env.DEFINES.update(
-            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_MINDPXV2',
-        )
-
-class sparky2(chibios):
-    name = 'sparky2'
-    def configure_env(self, cfg, env):
-        super(sparky2, self).configure_env(cfg, env)
-        env.DEFINES.update(
-            CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_CHIBIOS_SPARKY2',
-        )
-        env.CHIBIOS_FATFS_FLAG = 'USE_FATFS=no'
+    def pre_build(self, bld):
+        '''pre-build hook that gets called before dynamic sources'''
+        from waflib.Context import load_tool
+        module = load_tool('chibios', [], with_sys_path=True)
+        fun = getattr(module, 'pre_build', None)
+        if fun:
+            fun(bld)
 
 class linux(Board):
     def configure_env(self, cfg, env):
@@ -489,6 +482,9 @@ class navio2(linux):
 
 class edge(linux):
     toolchain = 'arm-linux-gnueabihf'
+
+    def __init__(self):
+        self.with_uavcan = True
 
     def configure_env(self, cfg, env):
         super(edge, self).configure_env(cfg, env)
@@ -705,6 +701,9 @@ class px4(Board):
             'uavcan',
         ]
 
+        if sys.platform == 'cygwin':
+            env.CXXFLAGS += ['-DCYGWIN_BUILD']
+
         env.ROMFS_EXCLUDE = self.ROMFS_EXCLUDE
 
         env.PX4_BOOTLOADER_NAME = self.bootloader_name
@@ -712,6 +711,7 @@ class px4(Board):
         env.PX4_BOARD_RC = self.board_rc
         env.PX4_PX4IO_NAME = self.px4io_name
         env.PX4_PARAM_DEFAULTS = self.param_defaults
+        env.PX4_RC_S_SCRIPT = 'init.d/rcS'
 
         env.AP_PROGRAM_AS_STLIB = True
 
@@ -751,6 +751,27 @@ class px4_v3(px4):
         self.board_name = 'px4fmu-v3'
         self.px4io_name = 'px4io-v2'
         self.with_uavcan = True
+
+class skyviper_v2450_px4(px4_v3):
+    name = 'skyviper-v2450-px4'
+    def __init__(self):
+        super(skyviper_v2450_px4, self).__init__()
+        self.px4io_name = None
+        self.param_defaults = '../../../Tools/Frame_params/SkyViper-2450GPS/defaults.parm'
+
+    def configure_env(self, cfg, env):
+        super(skyviper_v2450_px4, self).configure_env(cfg, env)
+
+        env.DEFINES.update(
+            TOY_MODE_ENABLED = 'ENABLED',
+            USE_FLASH_STORAGE = 1,
+            ARMING_DELAY_SEC = 0,
+            LAND_START_ALT = 700,
+            HAL_RCINPUT_WITH_AP_RADIO = 1,
+            LAND_DETECTOR_ACCEL_MAX = 2
+        )
+        env.PX4_RC_S_SCRIPT = 'init.d/rcS_no_microSD'
+        env.BUILD_ABIN = True
 
 class px4_v4(px4):
     name = 'px4-v4'

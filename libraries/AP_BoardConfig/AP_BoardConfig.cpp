@@ -55,6 +55,8 @@
 #  define BOARD_TYPE_DEFAULT VRX_BOARD_BRAIN51
 # elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V52)
 #  define BOARD_TYPE_DEFAULT VRX_BOARD_BRAIN52
+# elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V52E)
+#  define BOARD_TYPE_DEFAULT VRX_BOARD_BRAIN52E
 # elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V51)
 #  define BOARD_TYPE_DEFAULT VRX_BOARD_UBRAIN51
 # elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V52)
@@ -67,8 +69,12 @@
 
 #elif CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
 # define BOARD_SAFETY_ENABLE_DEFAULT 1
+#ifndef BOARD_PWM_COUNT_DEFAULT
 # define BOARD_PWM_COUNT_DEFAULT 6
+#endif
+#ifndef BOARD_SER1_RTSCTS_DEFAULT
 # define BOARD_SER1_RTSCTS_DEFAULT 2
+#endif
 # define BOARD_TYPE_DEFAULT PX4_BOARD_AUTO
 #endif
 
@@ -76,12 +82,18 @@
 #define HAL_IMU_TEMP_DEFAULT       -1 // disabled
 #endif
 
+#if AP_FEATURE_SAFETY_BUTTON
+#ifndef BOARD_SAFETY_OPTION_DEFAULT
+#define BOARD_SAFETY_OPTION_DEFAULT (BOARD_SAFETY_OPTION_BUTTON_ACTIVE_SAFETY_OFF|BOARD_SAFETY_OPTION_BUTTON_ACTIVE_SAFETY_ON)
+#endif
+#endif
+
 extern const AP_HAL::HAL& hal;
 AP_BoardConfig *AP_BoardConfig::instance;
 
 // table of user settable parameters
 const AP_Param::GroupInfo AP_BoardConfig::var_info[] = {
-#if AP_FEATURE_BOARD_DETECT
+#if AP_FEATURE_BOARD_DETECT || defined(AP_FEATURE_BRD_PWM_COUNT_PARAM)
     // @Param: PWM_COUNT
     // @DisplayName: Auxiliary pin config
     // @Description: Control assigning of FMU pins to PWM output, timer capture and GPIO. All unassigned pins can be used for GPIO
@@ -179,7 +191,26 @@ const AP_Param::GroupInfo AP_BoardConfig::var_info[] = {
 #endif
 #endif
 
-    // ID number 11 reserved for AP_Radio (pending PR)
+#ifdef HAL_RCINPUT_WITH_AP_RADIO
+    // @Group: RADIO
+    // @Path: ../AP_Radio/AP_Radio.cpp
+    AP_SUBGROUPINFO(_radio, "RADIO", 11, AP_BoardConfig, AP_Radio),
+#endif
+
+#if defined(HAL_NEEDS_PARAM_HELPER)
+    // @Group: ""
+    // @Path: ../libraries/AP_Param_Helper/AP_Param_Helper.cpp
+    AP_SUBGROUPINFO(param_helper, "", 12, AP_BoardConfig, AP_Param_Helper),
+#endif
+
+#if AP_FEATURE_SAFETY_BUTTON
+    // @Param: SAFETYOPTION
+    // @DisplayName: Options for safety button behavior
+    // @Description: This controls the activation of the safety button. It allows you to control if the safety button can be used for safety enable and/or disable, and whether the button is only active when disarmed
+    // @Bitmask: 0:ActiveForSafetyEnable,1:ActiveForSafetyDisable,2:ActiveWhenDisarmed
+    // @User: Standard
+    AP_GROUPINFO("SAFETYOPTION",   13, AP_BoardConfig, state.safety_option, BOARD_SAFETY_OPTION_DEFAULT),
+#endif
     
     AP_GROUPEND
 };

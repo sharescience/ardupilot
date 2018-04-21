@@ -31,7 +31,7 @@ const AP_Param::GroupInfo AP_Arming::var_info[] = {
 
     // @Param: REQUIRE
     // @DisplayName: Require Arming Motors 
-    // @Description: Arming disabled until some requirements are met. If 0, there are no requirements (arm immediately).  If 1, require rudder stick or GCS arming before arming motors and sends the minimum throttle PWM value to the throttle channel when disarmed.  If 2, require rudder stick or GCS arming and send 0 PWM to throttle channel when disarmed. See the ARMING_CHECK_* parameters to see what checks are done before arming. Note, if setting this parameter to 0 a reboot is required to arm the plane.  Also note, even with this parameter at 0, if ARMING_CHECK parameter is not also zero the plane may fail to arm throttle at boot due to a pre-arm check failure. This parameter is relevant for ArduPlane only.
+    // @Description: Arming disabled until some requirements are met. If 0, there are no requirements (arm immediately).  If 1, require rudder stick or GCS arming before arming motors and sends the minimum throttle PWM value to the throttle channel when disarmed.  If 2, require rudder stick or GCS arming and send 0 PWM to throttle channel when disarmed. See the ARMING_CHECK_* parameters to see what checks are done before arming. Note, if setting this parameter to 0 a reboot is required to arm the plane.  Also note, even with this parameter at 0, if ARMING_CHECK parameter is not also zero the plane may fail to arm throttle at boot due to a pre-arm check failure.
     // @Values: 0:Disabled,1:THR_MIN PWM when disarmed,2:0 PWM when disarmed
     // @User: Advanced
     AP_GROUPINFO_FLAGS_FRAME("REQUIRE",     0,      AP_Arming,  require,                 1,
@@ -41,10 +41,10 @@ const AP_Param::GroupInfo AP_Arming::var_info[] = {
     // @Param: CHECK
     // @DisplayName: Arm Checks to Peform (bitmask)
     // @Description: Checks prior to arming motor. This is a bitmask of checks that will be performed before allowing arming. The default is no checks, allowing arming at any time. You can select whatever checks you prefer by adding together the values of each check type to set this parameter. For example, to only allow arming when you have GPS lock and no RC failsafe you would set ARMING_CHECK to 72. For most users it is recommended that you set this to 1 to enable all checks.
-    // @Values: 0:None,1:All,2:Barometer,4:Compass,8:GPS Lock,16:INS(INertial Sensors - accels & gyros),32:Parameters(unused),64:RC Failsafe,128:Board voltage,256:Battery Level,1024:LoggingAvailable,2048:Hardware safety switch,4096:GPS configuration
-    // @Values{Plane}: 0:None,1:All,2:Barometer,4:Compass,8:GPS Lock,16:INS(INertial Sensors - accels & gyros),32:Parameters(unused),64:RC Failsafe,128:Board voltage,256:Battery Level,512:Airspeed,1024:LoggingAvailable,2048:Hardware safety switch,4096:GPS configuration
-    // @Bitmask: 0:All,1:Barometer,2:Compass,3:GPS lock,4:INS,5:Parameters,6:RC,7:Board voltage,8:Battery Level,10:Logging Available,11:Hardware safety switch,12:GPS Configuration
-    // @Bitmask{Plane}: 0:All,1:Barometer,2:Compass,3:GPS lock,4:INS,5:Parameters,6:RC,7:Board voltage,8:Battery Level,9:Airspeed,10:Logging Available,11:Hardware safety switch,12:GPS Configuration
+    // @Values: 0:None,1:All,2:Barometer,4:Compass,8:GPS Lock,16:INS(INertial Sensors - accels & gyros),32:Parameters(unused),64:RC Channels,128:Board voltage,256:Battery Level,1024:LoggingAvailable,2048:Hardware safety switch,4096:GPS configuration
+    // @Values{Plane}: 0:None,1:All,2:Barometer,4:Compass,8:GPS Lock,16:INS(INertial Sensors - accels & gyros),32:Parameters(unused),64:RC Channels,128:Board voltage,256:Battery Level,512:Airspeed,1024:LoggingAvailable,2048:Hardware safety switch,4096:GPS configuration
+    // @Bitmask: 0:All,1:Barometer,2:Compass,3:GPS lock,4:INS,5:Parameters,6:RC Channels,7:Board voltage,8:Battery Level,10:Logging Available,11:Hardware safety switch,12:GPS Configuration
+    // @Bitmask{Plane}: 0:All,1:Barometer,2:Compass,3:GPS lock,4:INS,5:Parameters,6:RC Channels,7:Board voltage,8:Battery Level,9:Airspeed,10:Logging Available,11:Hardware safety switch,12:GPS Configuration
     // @User: Standard
     AP_GROUPINFO("CHECK",        2,     AP_Arming,  checks_to_perform,       ARMING_CHECK_ALL),
 
@@ -77,10 +77,9 @@ const AP_Param::GroupInfo AP_Arming::var_info[] = {
 
 //The function point is particularly hacky, hacky, tacky
 //but I don't want to reimplement messaging to GCS at the moment:
-AP_Arming::AP_Arming(const AP_AHRS &ahrs_ref, const AP_Baro &baro, Compass &compass,
+AP_Arming::AP_Arming(const AP_AHRS &ahrs_ref, Compass &compass,
                      const AP_BattMonitor &battery) :
     ahrs(ahrs_ref),
-    barometer(baro),
     _compass(compass),
     _battery(battery),
     armed(false),
@@ -116,7 +115,7 @@ bool AP_Arming::barometer_checks(bool report)
 {
     if ((checks_to_perform & ARMING_CHECK_ALL) ||
         (checks_to_perform & ARMING_CHECK_BARO)) {
-        if (!barometer.all_healthy()) {
+        if (!AP::baro().all_healthy()) {
             if (report) {
                 gcs().send_text(MAV_SEVERITY_CRITICAL, "PreArm: Barometer not healthy");
             }
@@ -173,7 +172,7 @@ bool AP_Arming::ins_checks(bool report)
 {
     if ((checks_to_perform & ARMING_CHECK_ALL) ||
         (checks_to_perform & ARMING_CHECK_INS)) {
-        const AP_InertialSensor &ins = ahrs.get_ins();
+        const AP_InertialSensor &ins = AP::ins();
         if (!ins.get_gyro_health_all()) {
             if (report) {
                 gcs().send_text(MAV_SEVERITY_CRITICAL, "PreArm: Gyros not healthy");
@@ -347,7 +346,7 @@ bool AP_Arming::gps_checks(bool report)
     if ((checks_to_perform & ARMING_CHECK_ALL) || (checks_to_perform & ARMING_CHECK_GPS)) {
 
         //GPS OK?
-        if (home_status() == HOME_UNSET ||
+        if (!AP::ahrs().home_is_set() ||
             gps.status() < AP_GPS::GPS_OK_FIX_3D) {
             if (report) {
                 gcs().send_text(MAV_SEVERITY_CRITICAL, "PreArm: Bad GPS Position");

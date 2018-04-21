@@ -21,9 +21,9 @@
 #include "Scheduler.h"
 #include "Device.h"
 
-namespace ChibiOS {
+#if HAL_USE_SPI == TRUE
 
-class SPIDesc;
+namespace ChibiOS {
 
 class SPIBus : public DeviceBus {
 public:
@@ -31,8 +31,9 @@ public:
     struct spi_dev_s *dev;
     uint8_t bus;
     SPIConfig spicfg;
-    void dma_allocate(void);
-    void dma_deallocate(void);    
+    void dma_allocate(Shared_DMA *ctx);
+    void dma_deallocate(Shared_DMA *ctx);
+    bool spi_started;
 };
 
 struct SPIDesc {
@@ -87,6 +88,11 @@ public:
 
     bool set_chip_select(bool set) override;
 
+#ifdef HAL_SPI_CHECK_CLOCK_FREQ
+    // used to measure clock frequencies
+    static void test_clock_freq(void);
+#endif
+    
 private:
     SPIBus &bus;
     SPIDesc &device_desc;
@@ -115,5 +121,6 @@ private:
     static SPIDesc device_table[];
     SPIBus *buses;
 };
-
 }
+
+#endif // HAL_USE_SPI

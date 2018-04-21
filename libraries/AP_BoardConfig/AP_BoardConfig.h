@@ -4,7 +4,11 @@
 #include <AP_Common/AP_Common.h>
 #include <AP_Param/AP_Param.h>
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN || defined(HAL_CHIBIOS_ARCH_FMUV3) || defined(HAL_CHIBIOS_ARCH_FMUV4) || defined(HAL_CHIBIOS_ARCH_MINDPXV2)
+#if defined(HAL_NEEDS_PARAM_HELPER)
+#include <AP_Param_Helper/AP_Param_Helper.h>
+#endif
+
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN || defined(HAL_CHIBIOS_ARCH_FMUV3) || defined(HAL_CHIBIOS_ARCH_FMUV4) || defined(HAL_CHIBIOS_ARCH_MINDPXV2) || defined(HAL_CHIBIOS_ARCH_MINIPIX)
 #define AP_FEATURE_BOARD_DETECT 1
 #define AP_FEATURE_SAFETY_BUTTON 1
 #else
@@ -24,6 +28,10 @@
 #define AP_FEATURE_SBUS_OUT 0
 #endif
 
+#ifdef HAL_RCINPUT_WITH_AP_RADIO
+#include <AP_Radio/AP_Radio.h>
+#endif
+
 extern "C" typedef int (*main_fn_t)(int argc, char **);
 
 class AP_BoardConfig {
@@ -38,7 +46,7 @@ public:
     AP_BoardConfig &operator=(const AP_BoardConfig&) = delete;
 
     // singleton support
-    AP_BoardConfig *get_instance(void) {
+    static AP_BoardConfig *get_instance(void) {
         return instance;
     }
     
@@ -64,7 +72,7 @@ public:
     // valid types for BRD_TYPE: these values need to be in sync with the
     // values from the param description
     enum px4_board_type {
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN || CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
         PX4_BOARD_AUTO     = 0,
         PX4_BOARD_PX4V1    = 1,
         PX4_BOARD_PIXHAWK  = 2,
@@ -77,15 +85,15 @@ public:
         PX4_BOARD_AUAV21   = 20,
         PX4_BOARD_PCNC1    = 21,
         PX4_BOARD_MINDPXV2 = 22,
+        PX4_BOARD_SP01     = 23,
+        VRX_BOARD_BRAIN51  = 30,
+        VRX_BOARD_BRAIN52  = 32,
+        VRX_BOARD_BRAIN52E = 33,
+        VRX_BOARD_UBRAIN51 = 34,
+        VRX_BOARD_UBRAIN52 = 35,
+        VRX_BOARD_CORE10   = 36,
+        VRX_BOARD_BRAIN54  = 38,
         PX4_BOARD_OLDDRIVERS = 100,
-#endif
-#if CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
-        VRX_BOARD_BRAIN51  = 7,
-        VRX_BOARD_BRAIN52  = 8,
-        VRX_BOARD_UBRAIN51 = 9,
-        VRX_BOARD_UBRAIN52 = 10,
-        VRX_BOARD_CORE10   = 11,
-        VRX_BOARD_BRAIN54  = 12,
 #endif
     };
 #endif // AP_FEATURE_BOARD_DETECT
@@ -110,22 +118,47 @@ public:
 
     // get number of PWM outputs enabled on FMU
     static uint8_t get_pwm_count(void) {
-#if AP_FEATURE_BOARD_DETECT
+#if AP_FEATURE_BOARD_DETECT || defined(AP_FEATURE_BRD_PWM_COUNT_PARAM)
         return instance?instance->state.pwm_count.get():4;
+#else
+        // default to 16, which means all PWM channels available
+        return 16;
+#endif
+    }
+
+#if AP_FEATURE_SAFETY_BUTTON
+    enum board_safety_button_option {
+        BOARD_SAFETY_OPTION_BUTTON_ACTIVE_SAFETY_OFF=1,
+        BOARD_SAFETY_OPTION_BUTTON_ACTIVE_SAFETY_ON=2,
+        BOARD_SAFETY_OPTION_BUTTON_ACTIVE_ARMED=4,
+    };
+
+    // return safety button options. Bits are in enum board_safety_button_option
+    uint16_t get_safety_button_options(void) {
+        return uint16_t(state.safety_option.get());
+    }
+#endif
+
+    // return the value of BRD_SAFETY_MASK
+    uint16_t get_safety_mask(void) const {
+#if AP_FEATURE_BOARD_DETECT || defined(AP_FEATURE_BRD_PWM_COUNT_PARAM)
+        return uint16_t(state.ignore_safety_channels.get());
 #else
         return 0;
 #endif
     }
+
     
 private:
     static AP_BoardConfig *instance;
     
     AP_Int16 vehicleSerialNumber;
 
-#if AP_FEATURE_BOARD_DETECT
+#if AP_FEATURE_BOARD_DETECT || defined(AP_FEATURE_BRD_PWM_COUNT_PARAM)
     struct {
         AP_Int8 pwm_count;
         AP_Int8 safety_enable;
+        AP_Int16 safety_option;
         AP_Int32 ignore_safety_channels;
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
         AP_Int8 ser1_rtscts;
@@ -135,7 +168,9 @@ private:
         AP_Int8 board_type;
         AP_Int8 io_enable;
     } state;
+#endif
 
+#if AP_FEATURE_BOARD_DETECT
     static enum px4_board_type px4_configured_board;
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
@@ -164,4 +199,14 @@ private:
 
     // target temperarure for IMU in Celsius, or -1 to disable
     AP_Int8 _imu_target_temperature;
+
+#ifdef HAL_RCINPUT_WITH_AP_RADIO
+    // direct attached radio
+    AP_Radio _radio;
+#endif
+    
+#if defined(HAL_NEEDS_PARAM_HELPER)
+    // HAL specific parameters
+    AP_Param_Helper param_helper{false};
+#endif
 };

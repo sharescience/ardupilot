@@ -5,33 +5,71 @@
 class Mode {
     friend class Copter;
     friend class AP_Arming_Copter;
+    friend class ToyMode;
+    friend class GCS_MAVLINK_Copter;
+
+    // constructor
+    Mode(void);
 
 public:
 
-    Mode(Copter &copter) :
-        _copter(copter),
-        g(copter.g),
-        g2(copter.g2),
-        wp_nav(_copter.wp_nav),
-        pos_control(_copter.pos_control),
-        inertial_nav(_copter.inertial_nav),
-        ahrs(_copter.ahrs),
-        attitude_control(_copter.attitude_control),
-        motors(_copter.motors),
-        channel_roll(_copter.channel_roll),
-        channel_pitch(_copter.channel_pitch),
-        channel_throttle(_copter.channel_throttle),
-        channel_yaw(_copter.channel_yaw),
-        G_Dt(_copter.G_Dt),
-        ap(_copter.ap),
-        takeoff_state(_copter.takeoff_state),
-        ekfGndSpdLimit(_copter.ekfGndSpdLimit),
-        ekfNavVelGainScaler(_copter.ekfNavVelGainScaler),
-#if FRAME_CONFIG == HELI_FRAME
-        heli_flags(_copter.heli_flags),
-#endif
-        auto_yaw_mode(_copter.auto_yaw_mode)
-        { };
+    // Navigation Yaw control
+    class AutoYaw {
+
+    public:
+
+        // yaw(): main product of AutoYaw; the heading:
+        float yaw();
+
+        // mode(): current method of determining desired yaw:
+        autopilot_yaw_mode mode() const { return (autopilot_yaw_mode)_mode; }
+        void set_mode_to_default(bool rtl);
+        void set_mode(autopilot_yaw_mode new_mode);
+        autopilot_yaw_mode default_mode(bool rtl) const;
+
+        // rate_cds(): desired yaw rate in centidegrees/second:
+        float rate_cds() const;
+        void set_rate(float new_rate_cds);
+
+        // set_roi(...): set a "look at" location:
+        void set_roi(const Location &roi_location);
+
+        void set_fixed_yaw(float angle_deg,
+                           float turn_rate_dps,
+                           int8_t direction,
+                           bool relative_angle);
+
+    private:
+
+        float look_ahead_yaw();
+        float roi_yaw();
+
+        // auto flight mode's yaw mode
+        uint8_t _mode = AUTO_YAW_LOOK_AT_NEXT_WP;
+
+        // Yaw will point at this location if mode is set to AUTO_YAW_ROI
+        Vector3f roi;
+
+        // bearing from current location to the ROI
+        float _roi_yaw;
+
+        // yaw used for YAW_FIXED yaw_mode
+        int32_t _fixed_yaw;
+
+        // Deg/s we should turn
+        int16_t _fixed_yaw_slewrate;
+
+        // heading when in yaw_look_ahead_yaw
+        float _look_ahead_yaw;
+
+        // turn rate (in cds) when auto_yaw_mode is set to AUTO_YAW_RATE
+        float _rate_cds;
+
+        // used to reduce update rate to 100hz:
+        uint8_t roi_yaw_counter;
+
+    };
+    static AutoYaw auto_yaw;
 
 protected:
 
@@ -50,18 +88,33 @@ protected:
     // returns a string for this flightmode, exactly 4 bytes
     virtual const char *name4() const = 0;
 
-    // navigation support functions:
+    // navigation support functions
     void update_navigation();
     virtual void run_autopilot() {}
     virtual uint32_t wp_distance() const { return 0; }
     virtual int32_t wp_bearing() const { return 0; }
+    virtual bool in_guided_mode() const { return false; }
 
-    Copter &_copter;
+    // pilot input processing
+    void get_pilot_desired_lean_angles(float &roll_out, float &pitch_out, float angle_max, float angle_limit) const;
+
+    // takeoff support
+    bool takeoff_triggered(float target_climb_rate) const;
+
+    // helper functions
+    void zero_throttle_and_relax_ac();
+
+    // functions to control landing
+    // in modes that support landing
+    int32_t get_alt_above_ground(void);
+    void land_run_horizontal_control();
+    void land_run_vertical_control(bool pause_descent = false);
 
     // convenience references to avoid code churn in conversion:
     Parameters &g;
     ParametersG2 &g2;
     AC_WPNav *&wp_nav;
+    AC_Loiter *&loiter_nav;
     AC_PosControl *&pos_control;
     AP_InertialNav &inertial_nav;
     AP_AHRS &ahrs;
@@ -75,18 +128,11 @@ protected:
     ap_t &ap;
     takeoff_state_t &takeoff_state;
 
-    // takeoff support
-    bool takeoff_triggered(float target_climb_rate) const;
-
     // gnd speed limit required to observe optical flow sensor limits
     float &ekfGndSpdLimit;
 
     // scale factor applied to velocity controller gain to prevent optical flow noise causing excessive angle demand noise
     float &ekfNavVelGainScaler;
-
-    // Navigation Yaw control
-    // auto flight mode's yaw mode
-    uint8_t &auto_yaw_mode;
 
 #if FRAME_CONFIG == HELI_FRAME
     heli_flags_t &heli_flags;
@@ -95,96 +141,41 @@ protected:
     // pass-through functions to reduce code churn on conversion;
     // these are candidates for moving into the Mode base
     // class.
-    void get_pilot_desired_lean_angles(float roll_in, float pitch_in, float &roll_out, float &pitch_out, float angle_max) {
-        _copter.get_pilot_desired_lean_angles(roll_in, pitch_in, roll_out, pitch_out, angle_max);
-    }
-    float get_surface_tracking_climb_rate(int16_t target_rate, float current_alt_target, float dt) {
-        return _copter.get_surface_tracking_climb_rate(target_rate, current_alt_target, dt);
-    }
-    float get_pilot_desired_yaw_rate(int16_t stick_angle) {
-        return _copter.get_pilot_desired_yaw_rate(stick_angle);
-    }
-    float get_pilot_desired_climb_rate(float throttle_control) {
-        return _copter.get_pilot_desired_climb_rate(throttle_control);
-    }
-    float get_pilot_desired_throttle(int16_t throttle_control, float thr_mid = 0.0f) {
-        return _copter.get_pilot_desired_throttle(throttle_control, thr_mid);
-    }
-    float get_non_takeoff_throttle() {
-        return _copter.get_non_takeoff_throttle();
-    }
-    void update_simple_mode(void) {
-        _copter.update_simple_mode();
-    }
-    float get_smoothing_gain() {
-        return _copter.get_smoothing_gain();
-    }
-    bool set_mode(control_mode_t mode, mode_reason_t reason) {
-        return _copter.set_mode(mode, reason);
-    }
-    void set_land_complete(bool b) {
-        return _copter.set_land_complete(b);
-    }
-    GCS_Copter &gcs() {
-        return _copter.gcs();
-    }
-    void Log_Write_Event(uint8_t id) {
-        return _copter.Log_Write_Event(id);
-    }
-    void set_throttle_takeoff() {
-        return _copter.set_throttle_takeoff();
-    }
-    void set_auto_yaw_mode(uint8_t yaw_mode) {
-        return _copter.set_auto_yaw_mode(yaw_mode);
-    }
-    void set_auto_yaw_rate(float turn_rate_cds) {
-        return _copter.set_auto_yaw_rate(turn_rate_cds);
-    }
-    void set_auto_yaw_look_at_heading(float angle_deg, float turn_rate_dps, int8_t direction, bool relative_angle) {
-        return _copter.set_auto_yaw_look_at_heading(angle_deg, turn_rate_dps, direction, relative_angle);
-    }
-    void takeoff_timer_start(float alt_cm) {
-        return _copter.takeoff_timer_start(alt_cm);
-    }
-    void takeoff_stop() {
-        return _copter.takeoff_stop();
-    }
-    void takeoff_get_climb_rates(float& pilot_climb_rate, float& takeoff_climb_rate) {
-        return _copter.takeoff_get_climb_rates(pilot_climb_rate, takeoff_climb_rate);
-    }
-    float get_auto_heading() {
-        return _copter.get_auto_heading();
-    }
-    float get_auto_yaw_rate_cds() {
-        return _copter.get_auto_yaw_rate_cds();
-    }
-    float get_avoidance_adjusted_climbrate(float target_rate) {
-        return _copter.get_avoidance_adjusted_climbrate(target_rate);
-    }
-    uint16_t get_pilot_speed_dn() {
-        return _copter.get_pilot_speed_dn();
-    }
+    float get_surface_tracking_climb_rate(int16_t target_rate, float current_alt_target, float dt);
+    float get_pilot_desired_yaw_rate(int16_t stick_angle);
+    float get_pilot_desired_climb_rate(float throttle_control);
+    float get_pilot_desired_throttle(int16_t throttle_control, float thr_mid = 0.0f);
+    float get_non_takeoff_throttle(void);
+    void update_simple_mode(void);
+    bool set_mode(control_mode_t mode, mode_reason_t reason);
+    void set_land_complete(bool b);
+    GCS_Copter &gcs();
+    void Log_Write_Event(uint8_t id);
+    void set_throttle_takeoff(void);
+    void takeoff_timer_start(float alt_cm);
+    void takeoff_stop(void);
+    void takeoff_get_climb_rates(float& pilot_climb_rate, float& takeoff_climb_rate);
+    float get_avoidance_adjusted_climbrate(float target_rate);
+    uint16_t get_pilot_speed_dn(void);
 
     // end pass-through functions
-
-    void zero_throttle_and_relax_ac();
 };
 
 
+#if MODE_ACRO_ENABLED == ENABLED
 class ModeAcro : public Mode {
 
 public:
+    // inherit constructor
+    using Copter::Mode::Mode;
 
-    ModeAcro(Copter &copter) :
-        Copter::Mode(copter)
-        { }
     virtual bool init(bool ignore_checks) override;
     virtual void run() override;
 
-    virtual bool is_autopilot() const override { return false; }
-    virtual bool requires_GPS() const override { return false; }
-    virtual bool has_manual_throttle() const override { return true; }
-    virtual bool allows_arming(bool from_gcs) const override { return true; };
+    bool is_autopilot() const override { return false; }
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return true; }
+    bool allows_arming(bool from_gcs) const override { return true; };
 
 protected:
 
@@ -196,15 +187,14 @@ protected:
 private:
 
 };
+#endif
 
 #if FRAME_CONFIG == HELI_FRAME
 class ModeAcro_Heli : public ModeAcro {
 
 public:
-
-    ModeAcro_Heli(Copter &copter) :
-        Copter::ModeAcro(copter)
-        { }
+    // inherit constructor
+    using Copter::ModeAcro::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -218,10 +208,8 @@ private:
 class ModeAltHold : public Mode {
 
 public:
-
-    ModeAltHold(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -244,20 +232,17 @@ private:
 class ModeAuto : public Mode {
 
 public:
+    // inherit constructor
+    using Copter::Mode::Mode;
 
-    ModeAuto(Copter &copter, AP_Mission &_mission, AC_Circle *& _circle_nav) :
-        Copter::Mode(copter),
-        mission(_mission),
-        circle_nav(_circle_nav)
-        { }
+    bool init(bool ignore_checks) override;
+    void run() override;
 
-    virtual bool init(bool ignore_checks) override;
-    virtual void run() override;
-
-    virtual bool is_autopilot() const override { return true; }
-    virtual bool requires_GPS() const override { return true; }
-    virtual bool has_manual_throttle() const override { return false; }
-    virtual bool allows_arming(bool from_gcs) const override { return false; };
+    bool is_autopilot() const override { return true; }
+    bool requires_GPS() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(bool from_gcs) const override { return false; };
+    bool in_guided_mode() const { return mode() == Auto_NavGuided; }
 
     // Auto
     AutoMode mode() const { return _mode; }
@@ -292,13 +277,9 @@ protected:
     const char *name() const override { return "AUTO"; }
     const char *name4() const override { return "AUTO"; }
 
-    uint32_t wp_distance() const override {
-        return wp_nav->get_wp_distance_to_destination();
-    }
-    int32_t wp_bearing() const override {
-        return wp_nav->get_wp_bearing_to_destination();
-    }
-    void run_autopilot() override { mission.update(); }
+    uint32_t wp_distance() const override;
+    int32_t wp_bearing() const override;
+    void run_autopilot() override;
 
 private:
 
@@ -321,9 +302,6 @@ private:
     void payload_place_run_release();
 
     AutoMode _mode = Auto_TakeOff;   // controls which auto controller is run
-
-    AP_Mission &mission;
-    AC_Circle *&circle_nav;
 
     Location_Class terrain_adjusted_location(const AP_Mission::Mission_Command& cmd) const;
 
@@ -356,7 +334,9 @@ private:
 #if GRIPPER_ENABLED == ENABLED
     void do_gripper(const AP_Mission::Mission_Command& cmd);
 #endif
+#if WINCH_ENABLED == ENABLED
     void do_winch(const AP_Mission::Mission_Command& cmd);
+#endif
     void do_payload_place(const AP_Mission::Mission_Command& cmd);
     void do_RTL(void);
 
@@ -406,15 +386,12 @@ private:
 
 };
 
-
 #if AUTOTUNE_ENABLED == ENABLED
 class ModeAutoTune : public Mode {
 
 public:
-
-    ModeAutoTune(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -447,17 +424,20 @@ private:
     bool roll_enabled();
     bool pitch_enabled();
     bool yaw_enabled();
-    void twitching_test(float measurement, float target, float &measurement_min, float &measurement_max);
-    void updating_d_up(float &tune_d, float tune_d_min, float tune_d_max, float tune_d_step_ratio, float &tune_p, float tune_p_min, float tune_p_max, float tune_p_step_ratio, float target, float measurement_min, float measurement_max);
-    void updating_d_down(float &tune_d, float tune_d_min, float tune_d_step_ratio, float &tune_p, float tune_p_min, float tune_p_max, float tune_p_step_ratio, float target, float measurement_min, float measurement_max);
-    void updating_p_down(float &tune_p, float tune_p_min, float tune_p_step_ratio, float target, float measurement_max);
-    void updating_p_up(float &tune_p, float tune_p_max, float tune_p_step_ratio, float target, float measurement_max);
-    void updating_p_up_d_down(float &tune_d, float tune_d_min, float tune_d_step_ratio, float &tune_p, float tune_p_min, float tune_p_max, float tune_p_step_ratio, float target, float measurement_min, float measurement_max);
+    void twitching_test_rate(float rate, float rate_target, float &meas_rate_min, float &meas_rate_max);
+    void twitching_test_angle(float angle, float rate, float angle_target, float &meas_angle_min, float &meas_angle_max, float &meas_rate_min, float &meas_rate_max);
     void twitching_measure_acceleration(float &rate_of_change, float rate_measurement, float &rate_measurement_max);
+    void updating_rate_d_up(float &tune_d, float tune_d_min, float tune_d_max, float tune_d_step_ratio, float &tune_p, float tune_p_min, float tune_p_max, float tune_p_step_ratio, float rate_target, float meas_rate_min, float meas_rate_max);
+    void updating_rate_d_down(float &tune_d, float tune_d_min, float tune_d_step_ratio, float &tune_p, float tune_p_min, float tune_p_max, float tune_p_step_ratio, float rate_target, float meas_rate_min, float meas_rate_max);
+    void updating_rate_p_up_d_down(float &tune_d, float tune_d_min, float tune_d_step_ratio, float &tune_p, float tune_p_min, float tune_p_max, float tune_p_step_ratio, float rate_target, float meas_rate_min, float meas_rate_max);
+    void updating_angle_p_down(float &tune_p, float tune_p_min, float tune_p_step_ratio, float angle_target, float meas_angle_max, float meas_rate_min, float meas_rate_max);
+    void updating_angle_p_up(float &tune_p, float tune_p_max, float tune_p_step_ratio, float angle_target, float meas_angle_max, float meas_rate_min, float meas_rate_max);
     void get_poshold_attitude(float &roll_cd, float &pitch_cd, float &yaw_cd);
 
+#if LOGGING_ENABLED == ENABLED
     void Log_Write_AutoTune(uint8_t axis, uint8_t tune_step, float meas_target, float meas_min, float meas_max, float new_gain_rp, float new_gain_rd, float new_gain_sp, float new_ddt);
     void Log_Write_AutoTuneDetails(float angle_cd, float rate_cds);
+#endif
 
     void send_step_string();
     const char *level_issue_string() const;
@@ -522,17 +502,19 @@ private:
 
 // variables
     uint32_t override_time;                         // the last time the pilot overrode the controls
-    float    test_min;                              // the minimum angular rate achieved during TESTING_RATE step
-    float    test_max;                              // the maximum angular rate achieved during TESTING_RATE step
+    float    test_rate_min;                         // the minimum angular rate achieved during TESTING_RATE step
+    float    test_rate_max;                         // the maximum angular rate achieved during TESTING_RATE step
+    float    test_angle_min;                        // the minimum angle achieved during TESTING_ANGLE step
+    float    test_angle_max;                        // the maximum angle achieved during TESTING_ANGLE step
     uint32_t step_start_time;                       // start time of current tuning step (used for timeout checks)
     uint32_t step_stop_time;                        // start time of current tuning step (used for timeout checks)
     int8_t   counter;                               // counter for tuning gains
-    float    target_rate, start_rate;      // target and start rate
-    float    target_angle, start_angle;    // target and start angles
+    float    target_rate, start_rate;               // target and start rate
+    float    target_angle, start_angle;             // target and start angles
     float    desired_yaw;                           // yaw heading during tune
     float    rate_max, test_accel_max;              // maximum acceleration variables
 
-    LowPassFilterFloat  rotation_rate_filt;                         // filtered rotation rate in radians/second
+    LowPassFilterFloat  rotation_rate_filt;         // filtered rotation rate in radians/second
 
 // backup of currently being tuned parameter values
     float    orig_roll_rp = 0, orig_roll_ri, orig_roll_rd, orig_roll_sp, orig_roll_accel;
@@ -563,10 +545,8 @@ private:
 class ModeBrake : public Mode {
 
 public:
-
-    ModeBrake(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -594,11 +574,8 @@ private:
 class ModeCircle : public Mode {
 
 public:
-
-    ModeCircle(Copter &copter, AC_Circle *& _circle_nav) :
-        Copter::Mode(copter),
-        circle_nav(_circle_nav)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -613,37 +590,29 @@ protected:
     const char *name() const override { return "CIRCLE"; }
     const char *name4() const override { return "CIRC"; }
 
-    uint32_t wp_distance() const override {
-        return wp_nav->get_loiter_distance_to_target();
-    }
-    int32_t wp_bearing() const override {
-        return wp_nav->get_loiter_bearing_to_target();
-    }
+    uint32_t wp_distance() const override;
+    int32_t wp_bearing() const override;
 
 private:
 
     // Circle
     bool pilot_yaw_override = false; // true if pilot is overriding yaw
-    AC_Circle *&circle_nav;
-
 };
 
 
 class ModeDrift : public Mode {
 
 public:
+    // inherit constructor
+    using Copter::Mode::Mode;
 
-    ModeDrift(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    bool init(bool ignore_checks) override;
+    void run() override;
 
-    virtual bool init(bool ignore_checks) override;
-    virtual void run() override;
-
-    virtual bool requires_GPS() const override { return true; }
-    virtual bool has_manual_throttle() const override { return false; }
-    virtual bool allows_arming(bool from_gcs) const override { return true; };
-    virtual bool is_autopilot() const override { return false; }
+    bool requires_GPS() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(bool from_gcs) const override { return true; };
+    bool is_autopilot() const override { return false; }
 
 protected:
 
@@ -660,18 +629,16 @@ private:
 class ModeFlip : public Mode {
 
 public:
+    // inherit constructor
+    using Copter::Mode::Mode;
 
-    ModeFlip(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    bool init(bool ignore_checks) override;
+    void run() override;
 
-    virtual bool init(bool ignore_checks) override;
-    virtual void run() override;
-
-    virtual bool requires_GPS() const override { return false; }
-    virtual bool has_manual_throttle() const override { return false; }
-    virtual bool allows_arming(bool from_gcs) const override { return false; };
-    virtual bool is_autopilot() const override { return false; }
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(bool from_gcs) const override { return false; };
+    bool is_autopilot() const override { return false; }
 
 protected:
 
@@ -686,12 +653,95 @@ private:
 };
 
 
+#if !HAL_MINIMIZE_FEATURES && OPTFLOW == ENABLED
+/*
+  class to support FLOWHOLD mode, which is a position hold mode using
+  optical flow directly, avoiding the need for a rangefinder
+ */
+
+class ModeFlowHold : public Mode {
+public:
+    // need a constructor for parameters
+    ModeFlowHold(void);
+
+    bool init(bool ignore_checks) override;
+    void run(void) override;
+
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(bool from_gcs) const override { return true; };
+    bool is_autopilot() const override { return false; }
+
+    static const struct AP_Param::GroupInfo var_info[];
+
+protected:
+    const char *name() const override { return "FLOWHOLD"; }
+    const char *name4() const override { return "FHLD"; }
+
+private:
+
+    // FlowHold states
+    enum FlowHoldModeState {
+        FlowHold_MotorStopped,
+        FlowHold_Takeoff,
+        FlowHold_Flying,
+        FlowHold_Landed
+    };
+
+    // calculate attitude from flow data
+    void flow_to_angle(Vector2f &bf_angle);
+
+    LowPassFilterVector2f flow_filter;
+
+    bool flowhold_init(bool ignore_checks);
+    void flowhold_run();
+    void flowhold_flow_to_angle(Vector2f &angle, bool stick_input);
+    void update_height_estimate(void);
+
+    // minimum assumed height
+    const float height_min = 0.1;
+
+    // maximum scaling height
+    const float height_max = 3.0;
+
+    AP_Float flow_max;
+    AC_PI_2D flow_pi_xy{0.2, 0.3, 3000, 5, 0.0025};
+    AP_Float flow_filter_hz;
+    AP_Int8  flow_min_quality;
+    AP_Int8  brake_rate_dps;
+
+    float quality_filtered;
+
+    uint8_t log_counter;
+    bool limited;
+    Vector2f xy_I;
+
+    // accumulated INS delta velocity in north-east form since last flow update
+    Vector2f delta_velocity_ne;
+
+    // last flow rate in radians/sec in north-east axis
+    Vector2f last_flow_rate_rps;
+
+    // timestamp of last flow data
+    uint32_t last_flow_ms;
+
+    float last_ins_height;
+    float height_offset;
+
+    // are we braking after pilot input?
+    bool braking;
+
+    // last time there was significant stick input
+    uint32_t last_stick_input_ms;
+};
+#endif // OPTFLOW
+
+
 class ModeGuided : public Mode {
 
 public:
-
-    ModeGuided(Copter &copter) :
-        Copter::Mode(copter)        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -700,11 +750,12 @@ public:
     bool has_manual_throttle() const override { return false; }
     bool allows_arming(bool from_gcs) const override { return from_gcs; }
     bool is_autopilot() const override { return true; }
+    bool in_guided_mode() const { return true; }
 
     void set_angle(const Quaternion &q, float climb_rate_cms, bool use_yaw_rate, float yaw_rate_rads);
     bool set_destination(const Vector3f& destination, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
     bool set_destination(const Location_Class& dest_loc, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
-    void set_velocity(const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
+    void set_velocity(const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool log_request = true);
     bool set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
 
     void limit_clear();
@@ -748,9 +799,8 @@ private:
 class ModeGuidedNoGPS : public ModeGuided {
 
 public:
-
-    ModeGuidedNoGPS(Copter &copter) :
-        Copter::ModeGuided(copter)        { }
+    // inherit constructor
+    using Copter::ModeGuided::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -773,10 +823,8 @@ private:
 class ModeLand : public Mode {
 
 public:
-
-    ModeLand(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -790,8 +838,6 @@ public:
     float get_land_descent_speed();
     bool landing_with_GPS();
     void do_not_use_GPS();
-
-    int32_t get_alt_above_ground(void);
 
 protected:
 
@@ -808,10 +854,8 @@ private:
 class ModeLoiter : public Mode {
 
 public:
-
-    ModeLoiter(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -830,12 +874,8 @@ protected:
     const char *name() const override { return "LOITER"; }
     const char *name4() const override { return "LOIT"; }
 
-    uint32_t wp_distance() const override {
-        return wp_nav->get_loiter_distance_to_target();
-    }
-    int32_t wp_bearing() const override {
-        return wp_nav->get_loiter_bearing_to_target();
-    }
+    uint32_t wp_distance() const override;
+    int32_t wp_bearing() const override;
 
 #if PRECISION_LANDING == ENABLED
     bool do_precision_loiter();
@@ -854,10 +894,8 @@ private:
 class ModePosHold : public Mode {
 
 public:
-
-    ModePosHold(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -888,10 +926,8 @@ private:
 class ModeRTL : public Mode {
 
 public:
-
-    ModeRTL(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override {
@@ -918,12 +954,8 @@ protected:
     const char *name() const override { return "RTL"; }
     const char *name4() const override { return "RTL "; }
 
-    uint32_t wp_distance() const override {
-        return wp_nav->get_wp_distance_to_destination();
-    }
-    int32_t wp_bearing() const override {
-        return wp_nav->get_wp_bearing_to_destination();
-    }
+    uint32_t wp_distance() const override;
+    int32_t wp_bearing() const override;
 
     void descent_start();
     void descent_run();
@@ -964,10 +996,8 @@ private:
 class ModeSmartRTL : public ModeRTL {
 
 public:
-
-    ModeSmartRTL(Copter &copter) :
-        ModeSmartRTL::ModeRTL(copter)
-        { }
+    // inherit constructor
+    using Copter::ModeRTL::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -985,12 +1015,8 @@ protected:
     const char *name() const override { return "SMARTRTL"; }
     const char *name4() const override { return "SRTL"; }
 
-    uint32_t wp_distance() const override {
-        return wp_nav->get_wp_distance_to_destination();
-    }
-    int32_t wp_bearing() const override {
-        return wp_nav->get_wp_bearing_to_destination();
-    }
+    uint32_t wp_distance() const override;
+    int32_t wp_bearing() const override;
 
 private:
 
@@ -1006,18 +1032,16 @@ private:
 class ModeSport : public Mode {
 
 public:
+    // inherit constructor
+    using Copter::Mode::Mode;
 
-    ModeSport(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    bool init(bool ignore_checks) override;
+    void run() override;
 
-    virtual bool init(bool ignore_checks) override;
-    virtual void run() override;
-
-    virtual bool requires_GPS() const override { return false; }
-    virtual bool has_manual_throttle() const override { return false; }
-    virtual bool allows_arming(bool from_gcs) const override { return true; };
-    virtual bool is_autopilot() const override { return false; }
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(bool from_gcs) const override { return true; };
+    bool is_autopilot() const override { return false; }
 
 protected:
 
@@ -1032,18 +1056,16 @@ private:
 class ModeStabilize : public Mode {
 
 public:
-
-    ModeStabilize(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     virtual bool init(bool ignore_checks) override;
     virtual void run() override;
 
-    virtual bool requires_GPS() const override { return false; }
-    virtual bool has_manual_throttle() const override { return true; }
-    virtual bool allows_arming(bool from_gcs) const override { return true; };
-    virtual bool is_autopilot() const override { return false; }
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return true; }
+    bool allows_arming(bool from_gcs) const override { return true; };
+    bool is_autopilot() const override { return false; }
 
 protected:
 
@@ -1058,10 +1080,8 @@ private:
 class ModeStabilize_Heli : public ModeStabilize {
 
 public:
-
-    ModeStabilize_Heli(Copter &copter) :
-        Copter::ModeStabilize(copter)
-        { }
+    // inherit constructor
+    using Copter::ModeStabilize::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -1077,10 +1097,8 @@ private:
 class ModeThrow : public Mode {
 
 public:
-
-    ModeThrow(Copter &copter) :
-        Copter::Mode(copter)
-        { }
+    // inherit constructor
+    using Copter::Mode::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -1090,6 +1108,11 @@ public:
     bool allows_arming(bool from_gcs) const override { return true; };
     bool is_autopilot() const override { return false; }
 
+    // Throw types
+    enum ThrowModeType {
+        ThrowType_Upward = 0,
+        ThrowType_Drop = 1
+    };
 
 protected:
 
@@ -1103,22 +1126,30 @@ private:
     bool throw_height_good();
     bool throw_attitude_good();
 
+    // Throw stages
+    enum ThrowModeStage {
+        Throw_Disarmed,
+        Throw_Detecting,
+        Throw_Uprighting,
+        Throw_HgtStabilise,
+        Throw_PosHold
+    };
+
     ThrowModeStage stage = Throw_Disarmed;
     ThrowModeStage prev_stage = Throw_Disarmed;
     uint32_t last_log_ms;
     bool nextmode_attempted;
     uint32_t free_fall_start_ms;    // system time free fall was detected
     float free_fall_start_velz;     // vertical velocity when free fall was detected
-
 };
 
+// modes below rely on Guided mode so must be declared at the end (instead of in alphabetical order)
 
 class ModeAvoidADSB : public ModeGuided {
 
 public:
-
-    ModeAvoidADSB(Copter &copter) :
-        Copter::ModeGuided(copter) { }
+    // inherit constructor
+    using Copter::ModeGuided::Mode;
 
     bool init(bool ignore_checks) override;
     void run() override;
@@ -1137,4 +1168,27 @@ protected:
 
 private:
 
+};
+
+class ModeFollow : public ModeGuided {
+
+public:
+
+    // inherit constructor
+    using Copter::ModeGuided::Mode;
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+
+    bool requires_GPS() const override { return true; }
+    bool has_manual_throttle() const override { return false; }
+    bool allows_arming(bool from_gcs) const override { return false; }
+    bool is_autopilot() const override { return true; }
+
+protected:
+
+    const char *name() const override { return "FOLLOW"; }
+    const char *name4() const override { return "FOLL"; }
+
+    uint32_t last_log_ms;   // system time of last time desired velocity was logging
 };

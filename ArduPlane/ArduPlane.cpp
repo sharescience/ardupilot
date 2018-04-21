@@ -52,7 +52,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(gcs_update,             50,    500),
     SCHED_TASK(gcs_data_stream_send,   50,    500),
     SCHED_TASK(update_events,          50,    150),
-    SCHED_TASK(read_battery,           10,    300),
+    SCHED_TASK_CLASS(AP_BattMonitor, &plane.battery, read, 10, 300),
     SCHED_TASK(compass_accumulate,     50,    200),
     SCHED_TASK(barometer_accumulate,   50,    150),
     SCHED_TASK(update_notify,          50,    300),
@@ -70,7 +70,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(airspeed_ratio_update,   1,    100),
     SCHED_TASK(update_mount,           50,    100),
     SCHED_TASK(update_trigger,         50,    100),
-    SCHED_TASK(log_perf_info,         0.2,    100),
+    SCHED_TASK_CLASS(AP_Scheduler, &plane.scheduler, update_logging,         0.2,    100),
     SCHED_TASK(compass_save,          0.1,    200),
     SCHED_TASK(Log_Write_Fast,         25,    300),
     SCHED_TASK(update_logging1,        25,    300),
@@ -83,9 +83,17 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
     SCHED_TASK(ins_periodic,           50,     50),
     SCHED_TASK(avoidance_adsb_update,  10,    100),
     SCHED_TASK(button_update,           5,    100),
+#if STATS_ENABLED == ENABLED
     SCHED_TASK(stats_update,            1,    100),
+#endif
+#if GRIPPER_ENABLED == ENABLED
+    SCHED_TASK_CLASS(AP_Gripper, &plane.g2.gripper, update, 10, 75),
+#endif
 };
 
+constexpr int8_t Plane::_failsafe_priorities[5];
+
+#if STATS_ENABLED == ENABLED
 /*
   update AP_Stats
  */
@@ -93,7 +101,7 @@ void Plane::stats_update(void)
 {
     g2.stats.update();
 }
-
+#endif
 
 void Plane::setup() 
 {
@@ -107,45 +115,13 @@ void Plane::setup()
     init_ardupilot();
 
     // initialise the main loop scheduler
-    scheduler.init(&scheduler_tasks[0], ARRAY_SIZE(scheduler_tasks));
+    scheduler.init(&scheduler_tasks[0], ARRAY_SIZE(scheduler_tasks), MASK_LOG_PM);
 }
 
 void Plane::loop()
 {
-    uint32_t loop_us = 1000000UL / scheduler.get_loop_rate_hz();
-
-    // wait for an INS sample
-    ins.wait_for_sample();
-
-    uint32_t timer = micros();
-
-    perf.delta_us_fast_loop  = timer - perf.fast_loopTimer_us;
-    G_Dt = perf.delta_us_fast_loop * 1.0e-6f;
-
-    if (perf.delta_us_fast_loop > loop_us + 500) {
-        perf.num_long++;
-    }
-
-    if (perf.delta_us_fast_loop > perf.G_Dt_max && perf.fast_loopTimer_us != 0) {
-        perf.G_Dt_max = perf.delta_us_fast_loop;
-    }
-
-    if (perf.delta_us_fast_loop < perf.G_Dt_min || perf.G_Dt_min == 0) {
-        perf.G_Dt_min = perf.delta_us_fast_loop;
-    }
-    perf.fast_loopTimer_us = timer;
-
-    perf.mainLoop_count++;
-
-    // tell the scheduler one tick has passed
-    scheduler.tick();
-
-    // run all the tasks that are due to run. Note that we only
-    // have to call this once per loop, as the tasks are scheduled
-    // in multiples of the main loop tick. So if they don't run on
-    // the first call to the scheduler they won't run on a later
-    // call until scheduler.tick() is called again
-    scheduler.run(loop_us);
+    scheduler.loop();
+    G_Dt = scheduler.get_loop_period_s();
 }
 
 void Plane::update_soft_armed()
@@ -233,7 +209,6 @@ void Plane::update_compass(void)
 {
     if (g.compass_enabled && compass.read()) {
         ahrs.set_compass(&compass);
-        compass.learn_offsets();
         if (should_log(MASK_LOG_COMPASS) && !ahrs.have_ekf_logging()) {
             DataFlash.Log_Write_Compass(compass);
         }
@@ -289,7 +264,7 @@ void Plane::update_logging2(void)
         Log_Write_RC();
 
     if (should_log(MASK_LOG_IMU))
-        DataFlash.Log_Write_Vibration(ins);
+        DataFlash.Log_Write_Vibration();
 }
 
 
@@ -366,24 +341,6 @@ void Plane::one_second_loop()
     update_sensor_status_flags();
 }
 
-void Plane::log_perf_info()
-{
-    if (scheduler.debug() != 0) {
-        gcs().send_text(MAV_SEVERITY_INFO, "PERF: %u/%u Dt=%u/%u Log=%u",
-                          (unsigned)perf.num_long,
-                          (unsigned)perf.mainLoop_count,
-                          (unsigned)perf.G_Dt_max,
-                          (unsigned)perf.G_Dt_min,
-                          (unsigned)(DataFlash.num_dropped() - perf.last_log_dropped));
-    }
-
-    if (should_log(MASK_LOG_PM)) {
-        Log_Write_Performance();
-    }
-
-    resetPerfData();
-}
-
 void Plane::compass_save()
 {
     if (g.compass_enabled &&
@@ -455,17 +412,7 @@ void Plane::update_GPS_50Hz(void)
     ahrs.get_relative_position_D_home(relative_altitude);
     relative_altitude *= -1.0f;
 
-    static uint32_t last_gps_reading[GPS_MAX_INSTANCES];
     gps.update();
-
-    for (uint8_t i=0; i<gps.num_sensors(); i++) {
-        if (gps.last_message_time_ms(i) != last_gps_reading[i]) {
-            last_gps_reading[i] = gps.last_message_time_ms(i);
-            if (should_log(MASK_LOG_GPS)) {
-                Log_Write_GPS(i);
-            }
-        }
-    }
 }
 
 /*
@@ -692,7 +639,7 @@ void Plane::update_flight_mode(void)
         }
         if (g.fbwa_tdrag_chan > 0) {
             // check for the user enabling FBWA taildrag takeoff mode
-            bool tdrag_mode = (hal.rcin->read(g.fbwa_tdrag_chan-1) > 1700);
+            bool tdrag_mode = (RC_Channels::get_radio_in(g.fbwa_tdrag_chan-1) > 1700);
             if (tdrag_mode && !auto_state.fbwa_tdrag_takeoff_mode) {
                 if (auto_state.highest_airspeed < g.takeoff_tdrag_speed1) {
                     auto_state.fbwa_tdrag_takeoff_mode = true;
@@ -801,7 +748,7 @@ void Plane::update_navigation()
     
     switch(control_mode) {
     case AUTO:
-        if (home_is_set != HOME_UNSET) {
+        if (ahrs.home_is_set()) {
             mission.update();
         }
         break;
@@ -904,9 +851,6 @@ void Plane::set_flight_stage(AP_Vehicle::FixedWing::FlightStage fs)
 void Plane::update_alt()
 {
     barometer.update();
-    if (should_log(MASK_LOG_IMU)) {
-        Log_Write_Baro();
-    }
 
     // calculate the sink rate.
     float sink_rate;

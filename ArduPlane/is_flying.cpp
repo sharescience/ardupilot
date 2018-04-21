@@ -150,7 +150,9 @@ void Plane::update_is_flying_5Hz(void)
 #if FRSKY_TELEM_ENABLED == ENABLED
     frsky_telemetry.set_is_flying(new_is_flying);
 #endif
+#if STATS_ENABLED == ENABLED
     g2.stats.set_flying(new_is_flying);
+#endif
 
     crash_detection_update();
 
@@ -208,8 +210,8 @@ void Plane::crash_detection_update(void)
             if (!crash_state.checkedHardLanding && // only check once
                 been_auto_flying &&
                 (labs(ahrs.roll_sensor) > 6000 || labs(ahrs.pitch_sensor) > 6000)) {
+                
                 crashed = true;
-                crash_state.debounce_time_total_ms = CRASH_DETECTION_DELAY_MS;
 
                 // did we "crash" within 75m of the landing location? Probably just a hard landing
                 crashed_near_land_waypoint =
@@ -218,7 +220,8 @@ void Plane::crash_detection_update(void)
                 // trigger hard landing event right away, or never again. This inhibits a false hard landing
                 // event when, for example, a minute after a good landing you pick the plane up and
                 // this logic is still running and detects the plane is on its side as you carry it.
-                crash_state.debounce_timer_ms = now_ms + CRASH_DETECTION_DELAY_MS;
+                crash_state.debounce_timer_ms = now_ms;
+                crash_state.debounce_time_total_ms = 0; // no debounce
             }
 
             crash_state.checkedHardLanding = true;

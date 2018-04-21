@@ -283,7 +283,9 @@
 /*
  * PWM driver system settings.
  */
+#ifndef STM32_PWM_USE_ADVANCED
 #define STM32_PWM_USE_ADVANCED              FALSE
+#endif
 #define STM32_PWM_TIM1_IRQ_PRIORITY         7
 #define STM32_PWM_TIM2_IRQ_PRIORITY         7
 #define STM32_PWM_TIM3_IRQ_PRIORITY         7
@@ -355,13 +357,27 @@
 /*
  * USB driver system settings.
  */
+#ifndef STM32_USB_OTG1_IRQ_PRIORITY
 #define STM32_USB_OTG1_IRQ_PRIORITY         14
+#endif
+#ifndef STM32_USB_OTG2_IRQ_PRIORITY
 #define STM32_USB_OTG2_IRQ_PRIORITY         14
+#endif
+#ifndef STM32_USB_OTG1_RX_FIFO_SIZE
 #define STM32_USB_OTG1_RX_FIFO_SIZE         512
+#endif
+#ifndef STM32_USB_OTG2_RX_FIFO_SIZE
 #define STM32_USB_OTG2_RX_FIFO_SIZE         1024
+#endif
+#ifndef STM32_USB_OTG_THREAD_PRIO
 #define STM32_USB_OTG_THREAD_PRIO           LOWPRIO
+#endif
+#ifndef STM32_USB_OTG_THREAD_STACK_SIZE
 #define STM32_USB_OTG_THREAD_STACK_SIZE     128
+#endif
+#ifndef STM32_USB_OTGFIFO_FILL_BASEPRI
 #define STM32_USB_OTGFIFO_FILL_BASEPRI      0
+#endif
 
 /*
  * WDG driver system settings.

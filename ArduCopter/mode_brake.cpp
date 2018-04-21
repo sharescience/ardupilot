@@ -7,10 +7,7 @@
 // brake_init - initialise brake controller
 bool Copter::ModeBrake::init(bool ignore_checks)
 {
-    if (_copter.position_ok() || ignore_checks) {
-
-        // set desired acceleration to zero
-        wp_nav->clear_pilot_desired_acceleration();
+    if (copter.position_ok() || ignore_checks) {
 
         // set target to current position
         wp_nav->init_brake_target(BRAKE_MODE_DECEL_RATE);
@@ -47,12 +44,12 @@ void Copter::ModeBrake::run()
 
     // relax stop target if we might be landed
     if (ap.land_complete_maybe) {
-        wp_nav->loiter_soften_for_landing();
+        loiter_nav->soften_for_landing();
     }
 
     // if landed immediately disarm
     if (ap.land_complete) {
-        _copter.init_disarm_motors();
+        copter.init_disarm_motors();
     }
 
     // set motors to full range
@@ -62,7 +59,7 @@ void Copter::ModeBrake::run()
     wp_nav->update_brake(ekfGndSpdLimit, ekfNavVelGainScaler);
 
     // call attitude controller
-    attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav->get_roll(), wp_nav->get_pitch(), 0.0f, get_smoothing_gain());
+    attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(wp_nav->get_roll(), wp_nav->get_pitch(), 0.0f);
 
     // body-frame rate controller is run directly from 100hz loop
 
@@ -71,8 +68,8 @@ void Copter::ModeBrake::run()
     pos_control->update_z_controller();
 
     if (_timeout_ms != 0 && millis()-_timeout_start >= _timeout_ms) {
-        if (!_copter.set_mode(LOITER, MODE_REASON_BRAKE_TIMEOUT)) {
-            _copter.set_mode(ALT_HOLD, MODE_REASON_BRAKE_TIMEOUT);
+        if (!copter.set_mode(LOITER, MODE_REASON_BRAKE_TIMEOUT)) {
+            copter.set_mode(ALT_HOLD, MODE_REASON_BRAKE_TIMEOUT);
         }
     }
 }

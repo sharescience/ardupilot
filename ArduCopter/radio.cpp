@@ -43,6 +43,9 @@ void Copter::init_rc_in()
 
     // initialise throttle_zero flag
     ap.throttle_zero = true;
+
+    // Allow override by default at start
+    ap.rc_override_enable = true;
 }
 
  // init_rc_out -- initialise motors and check if pilot wants to perform ESC calibration
@@ -92,7 +95,7 @@ void Copter::read_radio()
 {
     uint32_t tnow_ms = millis();
 
-    if (hal.rcin->new_input()) {
+    if (RC_Channels::has_new_input()) {
         ap.new_radio_frame = true;
         RC_Channels::set_pwm_all();
 
@@ -191,4 +194,17 @@ void Copter::radio_passthrough_to_motors()
                                   channel_pitch->norm_input(),
                                   channel_throttle->get_control_in_zero_dz()*0.001,
                                   channel_yaw->norm_input());
+}
+
+/*
+  return the throttle input for mid-stick as a control-in value
+ */
+int16_t Copter::get_throttle_mid(void)
+{
+#if TOY_MODE_ENABLED == ENABLED
+    if (g2.toy_mode.enabled()) {
+        return g2.toy_mode.get_throttle_mid();
+    }
+#endif
+    return channel_throttle->get_control_mid();
 }

@@ -1,27 +1,5 @@
 #include "Copter.h"
 #if USE_EVENT_MANAGER == ENABLED
-// set_home_state - update home state
-void Copter::set_home_state(enum HomeState new_home_state)
-{
-    // if no change, exit immediately
-    if (ap.home_state == new_home_state)
-        return;
-
-    // update state
-    ap.home_state = new_home_state;
-
-    // log if home has been set
-    if (new_home_state == HOME_SET_NOT_LOCKED || new_home_state == HOME_SET_AND_LOCKED) {
-        Log_Write_Event(DATA_SET_HOME);
-    }
-}
-
-// home_is_set - returns true if home positions has been set (to GPS location, armed location or EKF origin)
-bool Copter::home_is_set()
-{
-    return (ap.home_state == HOME_SET_NOT_LOCKED || ap.home_state == HOME_SET_AND_LOCKED);
-}
-
 // ---------------------------------------------
 void Copter::set_auto_armed(bool b)
 {
@@ -89,23 +67,6 @@ void Copter::set_failsafe_radio(bool b)
         // update AP_Notify
         AP_Notify::flags.failsafe_radio = b;
     }
-}
-
-
-// ---------------------------------------------
-void Copter::set_failsafe_battery(bool b)
-{
-	if(failsafe.battery != b){
-        failsafe.battery = b;
-
-        if(failsafe.battery == false){
-        	event_manager.event_update(EM_FAILSAFE_BATTERY, EM_EVENT_OFF);
-        }else{
-        	event_manager.event_update(EM_FAILSAFE_BATTERY, EM_EVENT_ON);
-        }
-
-        AP_Notify::flags.failsafe_battery = b;
-	}
 }
 
 // ---------------------------------------------

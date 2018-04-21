@@ -50,10 +50,8 @@ Sub::Sub(void)
           attitude_control(ahrs_view, aparm, motors, MAIN_LOOP_SECONDS),
           pos_control(ahrs_view, inertial_nav, motors, attitude_control),
           wp_nav(inertial_nav, ahrs_view, pos_control, attitude_control),
+          loiter_nav(inertial_nav, ahrs_view, pos_control, attitude_control),
           circle_nav(inertial_nav, ahrs_view, pos_control),
-          pmTest1(0),
-          fast_loopTimer(0),
-          mainLoop_count(0),
           in_mavlink_delay(false),
           param_loader(var_info),
           last_pilot_yaw_input_ms(0)

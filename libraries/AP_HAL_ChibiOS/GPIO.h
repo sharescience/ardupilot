@@ -18,19 +18,12 @@
 
 #include "AP_HAL_ChibiOS.h"
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
- # define HAL_GPIO_A_LED_PIN        0
- # define HAL_GPIO_B_LED_PIN        0
- # define HAL_GPIO_C_LED_PIN        0
- # define HAL_GPIO_LED_ON           LOW
- # define HAL_GPIO_LED_OFF          HIGH
-#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_CHIBIOS_SKYVIPER_F412
- # define HAL_GPIO_CYRF_RESET       1
- # define HAL_GPIO_CYRF_IRQ         2
-#else
- # define HAL_GPIO_CYRF_RESET       1
- # define HAL_GPIO_CYRF_IRQ         15
+#ifndef HAL_GPIO_LED_ON
+#define HAL_GPIO_LED_ON 0
 #endif
+
+#ifndef HAL_GPIO_LED_OFF
+#define HAL_GPIO_LED_OFF 1
 #endif
 
 class ChibiOS::GPIO : public AP_HAL::GPIO {
@@ -54,17 +47,22 @@ public:
     bool    usb_connected(void) override;
 
     void set_usb_connected() { _usb_connected = true; }
+
+    /* attach interrupt via ioline_t */
+    bool _attach_interrupt(ioline_t line, AP_HAL::Proc p, uint8_t mode);
+    
 private:
-    bool _usb_connected = false;
+    bool _usb_connected;
+    bool _ext_started;
 };
 
 class ChibiOS::DigitalSource : public AP_HAL::DigitalSource {
 public:
-    DigitalSource(uint8_t v);
+    DigitalSource(ioline_t line);
     void    mode(uint8_t output);
     uint8_t read();
     void    write(uint8_t value);
     void    toggle();
 private:
-    uint8_t _v;
+    ioline_t line;
 };

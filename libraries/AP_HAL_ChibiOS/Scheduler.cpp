@@ -15,31 +15,36 @@
  * Code by Andrew Tridgell and Siddharth Bharat Purohit
  */
 #include <AP_HAL/AP_HAL.h>
-#if CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
 
 #include "AP_HAL_ChibiOS.h"
 #include "Scheduler.h"
+#include "Util.h"
 
 #include <AP_HAL_ChibiOS/UARTDriver.h>
 #include <AP_HAL_ChibiOS/AnalogIn.h>
 #include <AP_HAL_ChibiOS/Storage.h>
 #include <AP_HAL_ChibiOS/RCOutput.h>
 #include <AP_HAL_ChibiOS/RCInput.h>
+#include <AP_HAL_ChibiOS/CAN.h>
 
 #include <AP_Scheduler/AP_Scheduler.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
+#include "shared_dma.h"
+
+#if CH_CFG_USE_DYNAMIC == TRUE
 
 using namespace ChibiOS;
 
 extern const AP_HAL::HAL& hal;
 THD_WORKING_AREA(_timer_thread_wa, 2048);
 THD_WORKING_AREA(_rcin_thread_wa, 512);
+#ifdef HAL_PWM_ALARM
+THD_WORKING_AREA(_toneAlarm_thread_wa, 512);
+#endif
 THD_WORKING_AREA(_io_thread_wa, 2048);
 THD_WORKING_AREA(_storage_thread_wa, 2048);
-THD_WORKING_AREA(_uart_thread_wa, 2048);
-
-#if HAL_WITH_IO_MCU
-extern ChibiOS::UARTDriver uart_io;
+#if HAL_WITH_UAVCAN
+THD_WORKING_AREA(_uavcan_thread_wa, 4096);
 #endif
 
 Scheduler::Scheduler()
@@ -47,6 +52,8 @@ Scheduler::Scheduler()
 
 void Scheduler::init()
 {
+    chVTObjectInit(&_boost_timer);
+    
     // setup the timer thread - this will call tasks at 1kHz
     _timer_thread_ctx = chThdCreateStatic(_timer_thread_wa,
                      sizeof(_timer_thread_wa),
@@ -54,6 +61,14 @@ void Scheduler::init()
                      _timer_thread,             /* Thread function.     */
                      this);                     /* Thread parameter.    */
 
+    // setup the uavcan thread - this will call tasks at 1kHz
+#if HAL_WITH_UAVCAN
+    _uavcan_thread_ctx = chThdCreateStatic(_uavcan_thread_wa,
+                     sizeof(_uavcan_thread_wa),
+                     APM_UAVCAN_PRIORITY,        /* Initial priority.    */
+                     _uavcan_thread,            /* Thread function.     */
+                     this);                     /* Thread parameter.    */
+#endif
     // setup the RCIN thread - this will call tasks at 1kHz
     _rcin_thread_ctx = chThdCreateStatic(_rcin_thread_wa,
                      sizeof(_rcin_thread_wa),
@@ -61,13 +76,14 @@ void Scheduler::init()
                      _rcin_thread,             /* Thread function.     */
                      this);                     /* Thread parameter.    */
 
-    // the UART thread runs at a medium priority
-    _uart_thread_ctx = chThdCreateStatic(_uart_thread_wa,
-                     sizeof(_uart_thread_wa),
-                     APM_UART_PRIORITY,        /* Initial priority.    */
-                     _uart_thread,             /* Thread function.     */
+    // the toneAlarm thread runs at a medium priority
+#ifdef HAL_PWM_ALARM
+    _toneAlarm_thread_ctx = chThdCreateStatic(_toneAlarm_thread_wa,
+                     sizeof(_toneAlarm_thread_wa),
+                     APM_TONEALARM_PRIORITY,        /* Initial priority.    */
+                     _toneAlarm_thread,             /* Thread function.     */
                      this);                    /* Thread parameter.    */
-
+#endif
     // the IO thread runs at lower priority
     _io_thread_ctx = chThdCreateStatic(_io_thread_wa,
                      sizeof(_io_thread_wa),
@@ -83,12 +99,24 @@ void Scheduler::init()
                      this);                  /* Thread parameter.      */
 }
 
+
 void Scheduler::delay_microseconds(uint16_t usec)
 {
     if (usec == 0) { //chibios faults with 0us sleep
         return;
     }
-    chThdSleepMicroseconds(usec); //Suspends Thread for desired microseconds
+    uint32_t ticks;
+    if (usec >= 4096) {
+        // we need to use 64 bit calculations for tick conversions
+        ticks = US2ST64(usec);
+    } else {
+        ticks = US2ST(usec);
+    }
+    if (ticks == 0) {
+        // calling with ticks == 0 causes a hard fault on ChibiOS
+        ticks = 1;
+    }
+    chThdSleep(ticks); //Suspends Thread for desired microseconds
 }
 
 /*
@@ -104,10 +132,12 @@ static void set_high_priority()
 /*
   return the main thread to normal priority
  */
-static void set_normal_priority()
+static void set_normal_priority(void *ctx)
 {
 #if APM_MAIN_PRIORITY_BOOST != APM_MAIN_PRIORITY
-    hal_chibios_set_priority(APM_MAIN_PRIORITY);
+    thread_t *task = (thread_t *)ctx;
+    // we don't need a reschedule as that happens automatically on ISR exit
+    task->realprio = APM_MAIN_PRIORITY;
 #endif
 }
 
@@ -115,14 +145,26 @@ static void set_normal_priority()
   a variant of delay_microseconds that boosts priority to
   APM_MAIN_PRIORITY_BOOST for APM_MAIN_PRIORITY_BOOST_USEC
   microseconds when the time completes. This significantly improves
-  the regularity of timing of the main loop as it takes
+  the regularity of timing of the main loop
  */
 void Scheduler::delay_microseconds_boost(uint16_t usec)
 {
-    delay_microseconds(usec); //Suspends Thread for desired microseconds
     set_high_priority();
-    delay_microseconds(APM_MAIN_PRIORITY_BOOST_USEC);
-    set_normal_priority();
+    delay_microseconds(usec); //Suspends Thread for desired microseconds
+    chVTSet(&_boost_timer, US2ST(200), set_normal_priority, chThdGetSelfX());
+    _called_boost = true;
+}
+
+/*
+  return true if delay_microseconds_boost() has been called since last check
+ */
+bool Scheduler::check_called_boost(void)
+{
+    if (!_called_boost) {
+        return false;
+    }
+    _called_boost = false;
+    return true;
 }
 
 void Scheduler::delay(uint16_t ms)
@@ -207,6 +249,10 @@ void Scheduler::reboot(bool hold_in_bootloader)
     hal.rcout->force_safety_on();
     hal.rcout->force_safety_no_wait();
 
+    // lock all shared DMA channels. This has the effect of waiting
+    // till the sensor buses are idle
+    Shared_DMA::lock_all();
+    
     // delay to ensure the async force_saftey operation completes
     delay(500);
 
@@ -240,8 +286,10 @@ void Scheduler::_run_timers(bool called_from_timer_thread)
         _failsafe();
     }
 
+#if HAL_USE_ADC == TRUE
     // process analog input
     ((AnalogIn *)hal.analogin)->_timer_tick();
+#endif
 
     _in_timer_proc = false;
 }
@@ -249,7 +297,7 @@ void Scheduler::_run_timers(bool called_from_timer_thread)
 void Scheduler::_timer_thread(void *arg)
 {
     Scheduler *sched = (Scheduler *)arg;
-    sched->_timer_thread_ctx->name = "apm_timer";
+    chRegSetThreadName("apm_timer");
 
     while (!sched->_hal_initialized) {
         sched->delay_microseconds(1000);
@@ -264,11 +312,29 @@ void Scheduler::_timer_thread(void *arg)
         hal.rcout->timer_tick();
     }
 }
+#if HAL_WITH_UAVCAN
+void Scheduler::_uavcan_thread(void *arg)
+{
+    Scheduler *sched = (Scheduler *)arg;
+    chRegSetThreadName("apm_uavcan");
+    while (!sched->_hal_initialized) {
+        sched->delay_microseconds(20000);
+    }
+    while (true) {
+        sched->delay_microseconds(1000);
+        for (int i = 0; i < MAX_NUMBER_OF_CAN_INTERFACES; i++) {
+            if(hal.can_mgr[i] != nullptr) {
+                CANManager::from(hal.can_mgr[i])->_timer_tick();
+            }
+        }
+    }
+}
+#endif
 
 void Scheduler::_rcin_thread(void *arg)
 {
     Scheduler *sched = (Scheduler *)arg;
-    sched->_rcin_thread_ctx->name = "apm_rcin";
+    chRegSetThreadName("apm_rcin");
     while (!sched->_hal_initialized) {
         sched->delay_microseconds(20000);
     }
@@ -277,7 +343,23 @@ void Scheduler::_rcin_thread(void *arg)
         ((RCInput *)hal.rcin)->_timer_tick();
     }
 }
+#ifdef HAL_PWM_ALARM
 
+void Scheduler::_toneAlarm_thread(void *arg)
+{
+    Scheduler *sched = (Scheduler *)arg;
+    chRegSetThreadName("toneAlarm");
+    while (!sched->_hal_initialized) {
+        sched->delay_microseconds(20000);
+    }
+    while (true) {
+        sched->delay_microseconds(20000);
+
+        // process tone command
+        Util::from(hal.util)->_toneAlarm_timer_tick();
+    }
+}
+#endif
 void Scheduler::_run_io(void)
 {
     if (_in_io_proc) {
@@ -297,33 +379,10 @@ void Scheduler::_run_io(void)
     _in_io_proc = false;
 }
 
-void Scheduler::_uart_thread(void* arg)
-{
-    Scheduler *sched = (Scheduler *)arg;
-    sched->_uart_thread_ctx->name = "apm_uart";
-    while (!sched->_hal_initialized) {
-        sched->delay_microseconds(1000);
-    }
-    while (true) {
-        sched->delay_microseconds(1000);
-
-        // process any pending serial bytes
-        ((UARTDriver *)hal.uartA)->_timer_tick();
-        ((UARTDriver *)hal.uartB)->_timer_tick();
-        ((UARTDriver *)hal.uartC)->_timer_tick();
-        /*((UARTDriver *)hal.uartD)->_timer_tick();
-        ((UARTDriver *)hal.uartE)->_timer_tick();
-        ((UARTDriver *)hal.uartF)->_timer_tick();*/
-#if HAL_WITH_IO_MCU
-        uart_io._timer_tick();
-#endif
-    }
-}
-
 void Scheduler::_io_thread(void* arg)
 {
     Scheduler *sched = (Scheduler *)arg;
-    sched->_io_thread_ctx->name = "apm_io";
+    chRegSetThreadName("apm_io");
     while (!sched->_hal_initialized) {
         sched->delay_microseconds(1000);
     }
@@ -338,7 +397,7 @@ void Scheduler::_io_thread(void* arg)
 void Scheduler::_storage_thread(void* arg)
 {
     Scheduler *sched = (Scheduler *)arg;
-    sched->_storage_thread_ctx->name = "apm_storage";
+    chRegSetThreadName("apm_storage");
     while (!sched->_hal_initialized) {
         sched->delay_microseconds(10000);
     }
@@ -346,7 +405,7 @@ void Scheduler::_storage_thread(void* arg)
         sched->delay_microseconds(10000);
 
         // process any pending storage writes
-        ((Storage *)hal.storage)->_timer_tick();
+        hal.storage->_timer_tick();
     }
 }
 
@@ -364,4 +423,22 @@ void Scheduler::system_initialized()
     _initialized = true;
 }
 
-#endif
+/*
+  disable interrupts and return a context that can be used to
+  restore the interrupt state. This can be used to protect
+  critical regions
+*/
+void *Scheduler::disable_interrupts_save(void)
+{
+    return (void *)(uintptr_t)chSysGetStatusAndLockX();
+}
+
+/*
+  restore interrupt state from disable_interrupts_save()
+*/
+void Scheduler::restore_interrupts(void *state)
+{
+    chSysRestoreStatusX((syssts_t)(uintptr_t)state);
+}
+
+#endif // CH_CFG_USE_DYNAMIC

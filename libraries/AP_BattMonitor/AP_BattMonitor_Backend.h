@@ -34,6 +34,9 @@ public:
     // read the latest battery voltage
     virtual void read() = 0;
 
+    /// returns true if battery monitor instance provides consumed energy info
+    virtual bool has_consumed_energy() const { return false; }
+
     /// returns true if battery monitor instance provides current info
     virtual bool has_current() const = 0;
 
@@ -45,6 +48,10 @@ public:
 
     // update battery resistance estimate and voltage_resting_estimate
     void update_resistance_estimate();
+
+    // callback for UAVCAN messages
+    virtual void handle_bi_msg(float voltage, float current,
+            float temperature) {}
 
 protected:
     AP_BattMonitor                      &_mon;      // reference to front-end
